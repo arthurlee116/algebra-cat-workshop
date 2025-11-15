@@ -5,6 +5,8 @@ frontend/out/
 
 # Python virtual environments
 backend/.venv/
+backend/__pycache__/
+backend/data.db
 
 # macOS
 .DS_Store
