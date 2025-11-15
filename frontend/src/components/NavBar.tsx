@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { StoredUser } from "@/lib/userStorage";
 
 const LINKS = [
@@ -19,11 +19,33 @@ export default function NavBar({ user, onLogout }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scoreAnimation, setScoreAnimation] = useState<'up' | 'down' | null>(null);
+  const prevScoreRef = useRef<number | null>(null);
 
   const handleNavigate = (href: string) => {
     setMobileOpen(false);
     router.push(href);
   };
+
+  // 监听积分变化
+  useEffect(() => {
+    if (user && prevScoreRef.current !== null && user.total_score !== prevScoreRef.current) {
+      const change = user.total_score - prevScoreRef.current;
+      if (change > 0) {
+        setScoreAnimation('up');
+      } else if (change < 0) {
+        setScoreAnimation('down');
+      }
+
+      // 清除动画
+      const timer = setTimeout(() => {
+        setScoreAnimation(null);
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+    prevScoreRef.current = user?.total_score || null;
+  }, [user?.total_score]);
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-30">
@@ -52,7 +74,24 @@ export default function NavBar({ user, onLogout }: Props) {
               <p className="font-semibold text-gray-900">
                 {user.chinese_name} · {user.class_name}
               </p>
-              <p className="text-xs text-gray-500">总积分：{user.total_score}</p>
+              <div className={`text-xs text-gray-500 transition-all duration-500 ${
+                scoreAnimation === 'up' ? 'text-green-600 font-semibold' :
+                scoreAnimation === 'down' ? 'text-red-600 font-semibold' : ''
+              }`}>
+                总积分：
+                <span className={`inline-block transition-all duration-500 ${
+                  scoreAnimation === 'up' ? 'scale-110' :
+                  scoreAnimation === 'down' ? 'scale-95' : 'scale-100'
+                }`}>
+                  {user.total_score}
+                </span>
+                {scoreAnimation === 'up' && (
+                  <span className="ml-1 text-green-500">↑</span>
+                )}
+                {scoreAnimation === 'down' && (
+                  <span className="ml-1 text-red-500">↓</span>
+                )}
+              </div>
             </div>
           ) : (
             <p className="text-xs text-gray-500">未登录</p>

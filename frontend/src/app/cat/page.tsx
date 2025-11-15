@@ -3,10 +3,12 @@
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import NavBar from "@/components/NavBar";
+import dynamic from "next/dynamic";
 import { apiGet, apiPost } from "@/lib/api";
 import { getCatImage, nextStageDiff, stageLabel } from "@/lib/cat";
 import { useStoredUser } from "@/hooks/useStoredUser";
+
+const NavBar = dynamic(() => import("@/components/NavBar"), { ssr: false });
 
 type FoodItem = {
   foodId: string;

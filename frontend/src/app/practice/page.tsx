@@ -32,6 +32,7 @@ type CheckAnswerResponse = {
   scoreChange: number;
   newTotalScore: number;
   attemptCount: number;
+  solutionExpression?: string;
 };
 
 export default function PracticePage() {
@@ -48,6 +49,9 @@ export default function PracticePage() {
   const [status, setStatus] = useState<"idle" | "correct" | "exhausted">("idle");
   const [submitting, setSubmitting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [scoreChange, setScoreChange] = useState<number | null>(null);
+  const [previousScore, setPreviousScore] = useState<number | null>(null);
+  const [solutionExpression, setSolutionExpression] = useState<string | null>(null);
 
   const logout = useCallback(() => {
     writeUser(null);
@@ -68,6 +72,10 @@ export default function PracticePage() {
     setAttemptCount(0);
     setStatus("idle");
     setAnswer("");
+    // 清除之前的反馈状态
+    setScoreChange(null);
+    setPreviousScore(null);
+    setSolutionExpression(null);
     try {
       const payload = await apiPost<QuestionResponse>("/api/generate_question", {
         userId: user.userId,
@@ -92,6 +100,7 @@ export default function PracticePage() {
     if (!user || !question || !answer.trim()) return;
     setSubmitting(true);
     setError(null);
+    setPreviousScore(user.total_score);
     try {
       const result = await apiPost<CheckAnswerResponse>("/api/check_answer", {
         userId: user.userId,
@@ -102,11 +111,25 @@ export default function PracticePage() {
         userAnswer: answer,
       });
       const remaining = Math.max(0, 3 - result.attemptCount);
-      setFeedback(
-        result.isCorrect
-          ? `答对啦！得分 ${result.scoreChange > 0 ? `+${result.scoreChange}` : result.scoreChange}`
-          : `未通过，积分 ${result.scoreChange}. 还剩 ${remaining} 次机会`
-      );
+
+      // 设置积分变化信息
+      setScoreChange(result.scoreChange);
+
+      // 如果有标准答案，保存它
+      if (result.solutionExpression) {
+        setSolutionExpression(result.solutionExpression);
+      }
+
+      // 构建详细的反馈信息
+      let feedbackMessage = "";
+      if (result.isCorrect) {
+        feedbackMessage = `🎉 答对了！获得 ${result.scoreChange > 0 ? `+${result.scoreChange}` : result.scoreChange} 分`;
+      } else {
+        const impact = result.scoreChange < 0 ? `扣除 ${Math.abs(result.scoreChange)} 分` : "不扣分";
+        feedbackMessage = `❌ 答案错误，${impact}。还剩 ${remaining} 次机会`;
+      }
+
+      setFeedback(feedbackMessage);
       setAttemptCount(result.attemptCount);
       if (result.isCorrect) {
         setStatus("correct");
@@ -210,13 +233,21 @@ export default function PracticePage() {
               评分 {question?.difficultyScore ?? "--"}
             </span>
             {feedback && (
-              <span
-                className={`rounded-full px-3 py-1 ${
-                  status === "correct" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                }`}
-              >
-                {feedback}
-              </span>
+              <div className={`rounded-xl px-4 py-3 text-sm font-medium ${
+                status === "correct" ? "bg-green-50 border border-green-200 text-green-800" : "bg-yellow-50 border border-yellow-200 text-yellow-800"
+              }`}>
+                <p className="font-semibold">{feedback}</p>
+                {scoreChange !== null && previousScore !== null && user && (
+                  <p className="mt-1 text-xs font-normal">
+                    总积分: {previousScore} → {user.total_score}
+                    {scoreChange !== 0 && (
+                      <span className={`ml-2 font-semibold ${scoreChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ({scoreChange > 0 ? '+' : ''}{scoreChange})
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
             )}
           </div>
           <div className="mt-6 rounded-2xl bg-slate-50 p-6 text-gray-800">
@@ -245,6 +276,25 @@ export default function PracticePage() {
             </div>
           </div>
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+          {/* 答案提示 - 3次机会用尽时显示 */}
+          {status === "exhausted" && solutionExpression && (
+            <div className="mt-4 rounded-xl bg-blue-50 border border-blue-200 p-4">
+              <p className="font-semibold text-blue-900 mb-2">💡 正确答案：</p>
+              <p className="text-blue-800 font-mono text-sm bg-white px-3 py-2 rounded-lg border border-blue-300">
+                {solutionExpression}
+              </p>
+              <p className="text-blue-700 text-xs mt-2">
+                提示：因式分解时要注意符号的正确性，常见错误包括：
+              </p>
+              <ul className="text-blue-600 text-xs mt-1 ml-4 list-disc">
+                <li>符号错误（如 + 写成 -）</li>
+                <li>变量错误（如 x 写成 z）</li>
+                <li>括号展开错误</li>
+              </ul>
+            </div>
+          )}
+
           <div className="mt-6 flex flex-wrap gap-4">
             <button
               onClick={handleSubmit}

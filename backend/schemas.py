@@ -50,6 +50,7 @@ class CheckAnswerResponse(BaseModel):
     score_change: int = Field(alias="scoreChange")
     new_total_score: int = Field(alias="newTotalScore")
     attempt_count: int = Field(alias="attemptCount")
+    solution_expression: str | None = Field(default=None, alias="solutionExpression")
 
 
 class BuyFoodRequest(BaseModel):

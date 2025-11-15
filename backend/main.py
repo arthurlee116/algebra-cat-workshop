@@ -6,12 +6,22 @@ import sympy as sp
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sympy.parsing.sympy_parser import (
+    implicit_multiplication_application,
+    parse_expr,
+    standard_transformations,
+)
 
 from .config import get_settings
 from .database import Base, engine, get_db
 from .foods import FOOD_MAP, FOODS
 from .models import FoodPurchase, Question, QuestionAttempt, User
-from .question_generator import DifficultyLevel, Topic, generate_question
+from .question_generator import (
+    DifficultyLevel,
+    Topic,
+    VARIABLE_SYMBOLS,
+    generate_question,
+)
 from .schemas import (
     BuyFoodRequest,
     BuyFoodResponse,
@@ -41,13 +51,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_symbol_x = sp.Symbol("x")
+_SYMBOLS = VARIABLE_SYMBOLS
+_TRANSFORMATIONS = standard_transformations + (implicit_multiplication_application,)
 
 
 def _normalize_expr(text: str) -> sp.Expr:
     sanitized = text.replace("^", "**")
     try:
-        return sp.simplify(sp.sympify(sanitized, locals={"x": _symbol_x}))
+        expr = parse_expr(sanitized, local_dict=_SYMBOLS, transformations=_TRANSFORMATIONS, evaluate=True)
+        return sp.simplify(expr)
     except Exception as exc:  # pragma: no cover - sympy errors are contextual
         raise HTTPException(status_code=400, detail=f"无法解析表达式: {exc}") from exc
 
@@ -167,12 +179,18 @@ def check_answer(payload: CheckAnswerRequest, db: Session = Depends(get_db)):
     db.refresh(user)
     db.refresh(question)
 
+    # 如果机会用尽，返回标准答案
+    solution = None
+    if question.attempts_used >= 3:
+        solution = question.solution_expression
+
     return CheckAnswerResponse(
         isCorrect=is_correct,
         difficultyScore=question.difficulty_score,
         scoreChange=score_change,
         newTotalScore=user.total_score,
         attemptCount=question.attempts_used,
+        solutionExpression=solution,
     )
 
 
