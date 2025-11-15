@@ -1,7 +1,7 @@
-export function getCatStage(totalScore: number): number {
-  if (totalScore <= 50) return 1;
-  if (totalScore <= 150) return 2;
-  if (totalScore <= 300) return 3;
+export function getCatStage(catScore: number): number {
+  if (catScore <= 50) return 1;
+  if (catScore <= 150) return 2;
+  if (catScore <= 300) return 3;
   return 4;
 }
 
@@ -25,9 +25,9 @@ export function stageLabel(stage: number): string {
   }
 }
 
-export function nextStageDiff(totalScore: number): number {
-  if (totalScore <= 50) return 51 - totalScore;
-  if (totalScore <= 150) return 151 - totalScore;
-  if (totalScore <= 300) return 301 - totalScore;
+export function nextStageDiff(catScore: number): number {
+  if (catScore <= 50) return 51 - catScore;
+  if (catScore <= 150) return 151 - catScore;
+  if (catScore <= 300) return 301 - catScore;
   return 0;
 }

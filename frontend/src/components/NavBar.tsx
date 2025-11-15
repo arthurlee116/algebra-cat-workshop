@@ -29,23 +29,29 @@ export default function NavBar({ user, onLogout }: Props) {
 
   // 监听积分变化
   useEffect(() => {
-    if (user && prevScoreRef.current !== null && user.total_score !== prevScoreRef.current) {
-      const change = user.total_score - prevScoreRef.current;
-      if (change > 0) {
-        setScoreAnimation('up');
-      } else if (change < 0) {
-        setScoreAnimation('down');
-      }
-
-      // 清除动画
-      const timer = setTimeout(() => {
-        setScoreAnimation(null);
-      }, 2000);
-
-      return () => clearTimeout(timer);
+    if (!user) {
+      prevScoreRef.current = null;
+      setScoreAnimation(null);
+      return;
     }
-    prevScoreRef.current = user?.total_score || null;
-  }, [user?.total_score]);
+
+    const currentScore = user.total_score;
+    const previousScore = prevScoreRef.current;
+    prevScoreRef.current = currentScore;
+
+    if (previousScore === null || currentScore === previousScore) {
+      return;
+    }
+
+    const change = currentScore - previousScore;
+    setScoreAnimation(change > 0 ? "up" : "down");
+
+    const timer = setTimeout(() => {
+      setScoreAnimation(null);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [user]);
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-30">

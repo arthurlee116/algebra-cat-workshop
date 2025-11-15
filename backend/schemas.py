@@ -79,6 +79,7 @@ class FoodListResponse(BaseModel):
 class UserSummaryResponse(BaseModel):
     user_id: int = Field(alias="userId")
     total_score: int = Field(alias="totalScore")
+    cat_score: int = Field(alias="catScore")
     current_cat_stage: int = Field(alias="currentCatStage")
     next_stage_score: int = Field(alias="nextStageScore")
     updated_at: datetime

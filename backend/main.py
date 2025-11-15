@@ -5,6 +5,7 @@ from datetime import datetime
 import sympy as sp
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sympy.parsing.sympy_parser import (
     implicit_multiplication_application,
@@ -66,6 +67,15 @@ def _normalize_expr(text: str) -> sp.Expr:
 
 def _clamp_score(value: int) -> int:
     return value if value > 0 else 0
+
+
+def _get_cat_score(db: Session, user_id: int) -> int:
+    total = (
+        db.query(func.coalesce(func.sum(FoodPurchase.cost), 0))
+        .filter(FoodPurchase.user_id == user_id)
+        .scalar()
+    )
+    return int(total or 0)
 
 
 @app.post("/api/login", response_model=LoginResponse)
@@ -159,8 +169,16 @@ def check_answer(payload: CheckAnswerRequest, db: Session = Depends(get_db)):
     if is_correct:
         question.is_solved = True
 
-    score_change = get_score_change(question.difficulty_level, is_correct)
-    user.total_score = _clamp_score(user.total_score + score_change)
+    # 只有答对或者三次机会全部用尽仍然错误时才变动积分
+    if is_correct:
+        score_change = get_score_change(question.difficulty_level, True)
+    elif question.attempts_used >= 3:
+        score_change = get_score_change(question.difficulty_level, False)
+    else:
+        score_change = 0
+
+    if score_change:
+        user.total_score = _clamp_score(user.total_score + score_change)
 
     db_attempt = QuestionAttempt(
         question_id=question.question_id,
@@ -218,10 +236,12 @@ def buy_food(payload: BuyFoodRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
+    cat_score = _get_cat_score(db, user.id)
+
     return BuyFoodResponse(
         success=True,
         newTotalScore=user.total_score,
-        currentCatStage=get_cat_stage(user.total_score),
+        currentCatStage=get_cat_stage(cat_score),
     )
 
 
@@ -247,10 +267,13 @@ def summary(user_id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="未找到该学生")
 
+    cat_score = _get_cat_score(db, user.id)
+
     return UserSummaryResponse(
         userId=user.id,
         totalScore=user.total_score,
-        currentCatStage=get_cat_stage(user.total_score),
-        nextStageScore=next_stage_threshold(user.total_score),
+        catScore=cat_score,
+        currentCatStage=get_cat_stage(cat_score),
+        nextStageScore=next_stage_threshold(cat_score),
         updated_at=datetime.utcnow(),
     )

@@ -25,6 +25,7 @@ type FoodListResponse = {
 type UserSummary = {
   userId: number;
   totalScore: number;
+  catScore: number;
   currentCatStage: number;
   nextStageScore: number;
 };
@@ -116,7 +117,8 @@ export default function CatPage() {
     );
   }
 
-  const remaining = nextStageDiff(summary.totalScore);
+  const catPoints = summary.catScore;
+  const remaining = nextStageDiff(catPoints);
   const catImage = getCatImage(summary.currentCatStage);
 
   return (
@@ -125,9 +127,9 @@ export default function CatPage() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <section className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl bg-gradient-to-br from-purple-100 to-white p-8 shadow-md">
-            <p className="text-sm uppercase text-purple-600">积分总览</p>
-            <h2 className="mt-2 text-4xl font-bold text-gray-900">{summary.totalScore} 分</h2>
-            <p className="mt-1 text-sm text-gray-500">{stageLabel(summary.currentCatStage)}</p>
+            <p className="text-sm uppercase text-purple-600">猫咪积分</p>
+            <h2 className="mt-2 text-4xl font-bold text-gray-900">{catPoints} 分</h2>
+            <p className="mt-1 text-sm text-gray-500">累计喂食价值 · {stageLabel(summary.currentCatStage)}</p>
             <div className="mt-6 flex items-center gap-4">
               <div className={`relative h-48 w-48 overflow-hidden rounded-full border-4 border-purple-200 bg-white ${celebrating ? "animate-pulse" : ""}`}>
                 <Image src={catImage} alt="cat" fill sizes="200px" className="object-cover" />
@@ -138,7 +140,7 @@ export default function CatPage() {
                 ) : (
                   <p className="text-green-600">已经来到了终极猫阶段！</p>
                 )}
-                <p className="mt-2 text-sm text-gray-500">完成高难度题目与参与商店互动可快速升级。</p>
+                <p className="mt-2 text-sm text-gray-500">多做题赚积分，常来商店喂食猫咪即可升级。</p>
               </div>
             </div>
           </div>
@@ -161,7 +163,7 @@ export default function CatPage() {
               <h3 className="text-2xl font-semibold text-gray-900">挑选食物犒劳你的猫</h3>
               <p className="text-sm text-gray-500">每一件食物都对应一张我们提前生成的 Ark 图片。</p>
             </div>
-            <p className="text-sm text-gray-500">当前积分：{summary.totalScore}</p>
+            <p className="text-sm text-gray-500">可用积分：{summary.totalScore}</p>
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {foods.map((food) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import { useStoredUser } from "@/hooks/useStoredUser";
@@ -38,6 +38,7 @@ type CheckAnswerResponse = {
 export default function PracticePage() {
   const router = useRouter();
   const { user, writeUser, updateUserScore } = useStoredUser();
+  const userId = user?.userId;
   const [selectedTopic, setSelectedTopic] = useState<(typeof TOPICS)[number]["id"]>("add_sub");
   const [selectedDifficulty, setSelectedDifficulty] = useState<(typeof DIFFICULTIES)[number]["id"]>("basic");
   const [question, setQuestion] = useState<QuestionResponse | null>(null);
@@ -52,6 +53,29 @@ export default function PracticePage() {
   const [scoreChange, setScoreChange] = useState<number | null>(null);
   const [previousScore, setPreviousScore] = useState<number | null>(null);
   const [solutionExpression, setSolutionExpression] = useState<string | null>(null);
+  const [inputError, setInputError] = useState(false);
+  const answerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerInputError = useCallback(() => {
+    if (shakeTimeoutRef.current) {
+      clearTimeout(shakeTimeoutRef.current);
+    }
+    setInputError(true);
+    answerInputRef.current?.focus();
+    shakeTimeoutRef.current = setTimeout(() => {
+      setInputError(false);
+      shakeTimeoutRef.current = null;
+    }, 600);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) {
+        clearTimeout(shakeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const logout = useCallback(() => {
     writeUser(null);
@@ -65,7 +89,7 @@ export default function PracticePage() {
   }, [user, router]);
 
   const fetchQuestion = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     setLoadingQuestion(true);
     setError(null);
     setFeedback(null);
@@ -78,7 +102,7 @@ export default function PracticePage() {
     setSolutionExpression(null);
     try {
       const payload = await apiPost<QuestionResponse>("/api/generate_question", {
-        userId: user.userId,
+        userId,
         topic: selectedTopic,
         difficultyLevel: selectedDifficulty,
       });
@@ -88,13 +112,13 @@ export default function PracticePage() {
     } finally {
       setLoadingQuestion(false);
     }
-  }, [selectedDifficulty, selectedTopic, user]);
+  }, [selectedDifficulty, selectedTopic, userId]);
 
   useEffect(() => {
-    if (user) {
+    if (userId) {
       fetchQuestion();
     }
-  }, [user, fetchQuestion]);
+  }, [userId, fetchQuestion]);
 
   const handleSubmit = async () => {
     if (!user || !question || !answer.trim()) return;
@@ -135,6 +159,8 @@ export default function PracticePage() {
         setStatus("correct");
       } else if (result.attemptCount >= 3) {
         setStatus("exhausted");
+      } else {
+        triggerInputError();
       }
       updateUserScore(result.newTotalScore);
     } catch (err) {
@@ -147,7 +173,8 @@ export default function PracticePage() {
   const canSubmit = !!question && status !== "correct" && !submitting && !!answer.trim();
   const canGoNext = status === "correct" || attemptCount >= 3;
   const currentTopic = useMemo(() => TOPICS.find((item) => item.id === selectedTopic), [selectedTopic]);
-  const instructions = `输入规则：使用 x 作为未知数，^ 表示乘方（如 x^2），/ 表示分数（如 1/2），请勿输入空格。`;
+  const instructions =
+    "输入规则：按题目给出的字母作为未知数（可能包含 x、y、z），^ 表示乘方（如 x^2），/ 表示分数（如 1/2），乘号可省略，空格可写可不写。";
 
   if (!user) {
     return (
@@ -176,7 +203,7 @@ export default function PracticePage() {
                   : "border-gray-200 hover:border-purple-200"
               }`}
             >
-              <p className="text-sm font-semibold">{topic.label}</p>
+              <p className="text-sm font-semibold text-gray-900">{topic.label}</p>
               <p className="text-xs text-gray-500">{topic.hint}</p>
             </button>
           ))}
@@ -198,7 +225,7 @@ export default function PracticePage() {
                   : "border-gray-200 hover:border-orange-200"
               }`}
             >
-              <p className="text-sm font-semibold">{level.label}</p>
+              <p className="text-sm font-semibold text-gray-900">{level.label}</p>
               <p className="text-xs text-gray-500">{level.desc}</p>
             </button>
           ))}
@@ -265,7 +292,10 @@ export default function PracticePage() {
               value={answer}
               onChange={(event) => setAnswer(event.target.value)}
               rows={3}
-              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-base focus:border-purple-500 focus:outline-none"
+              ref={answerInputRef}
+              className={`w-full rounded-2xl border px-4 py-3 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none transition ${
+                inputError ? "border-red-500 focus:border-red-500 shake-input" : "border-gray-200 focus:border-purple-500"
+              }`}
               placeholder="例如 (x+2)^2 - 3x"
               disabled={status === "correct"}
             />
