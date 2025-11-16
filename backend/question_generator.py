@@ -6,11 +6,6 @@ from dataclasses import dataclass
 from typing import Literal, Sequence
 
 import sympy as sp
-from sympy.parsing.sympy_parser import (
-    implicit_multiplication_application,
-    parse_expr,
-    standard_transformations,
-)
 
 # 允许在题目中出现的未知数集合，后面会根据难度选择其中 1~3 个。
 VARIABLE_NAMES: tuple[str, ...] = ("x", "y", "z")
@@ -18,8 +13,6 @@ VARIABLE_SYMBOLS: dict[str, sp.Symbol] = {name: sp.Symbol(name) for name in VARI
 
 # 兼容原有只用 x 的实现
 x = VARIABLE_SYMBOLS["x"]
-
-_TRANSFORMATIONS = standard_transformations + (implicit_multiplication_application,)
 
 Topic = Literal["add_sub", "mul_div", "factorization"]
 DifficultyLevel = Literal["basic", "intermediate", "advanced"]
@@ -42,23 +35,6 @@ class GeneratedQuestion:
     topic: Topic
     difficulty_level: DifficultyLevel
     difficulty_score: int
-
-
-def expression_text_to_latex(text: str) -> str:
-    """Convert the human input string to LaTeX for nicer display."""
-
-    sanitized = text.replace("^", "**")
-    try:
-        expr = parse_expr(
-            sanitized,
-            local_dict=VARIABLE_SYMBOLS,
-            transformations=_TRANSFORMATIONS,
-            evaluate=False,
-        )
-        return sp.latex(expr)
-    except Exception:
-        # 回退到原始字符串，至少保证有内容可展示。
-        return text
 
 
 def humanize_expression(expr: sp.Expr, symbols: Sequence[sp.Symbol] | None = None) -> str:
@@ -157,10 +133,11 @@ def random_polynomial(
     return expr
 
 
-def build_add_sub_expression(variables: Sequence[sp.Symbol]) -> tuple[str, sp.Expr]:
+def build_add_sub_expression(variables: Sequence[sp.Symbol]) -> tuple[str, str, sp.Expr]:
     # 多项式加减：随机组合 2-4 个多项式，并记录括号表达式方便前端显示。
     term_count = random.randint(2, 4)
     segments: list[str] = []
+    latex_segments: list[str] = []
     total_expr = sp.Integer(0)
     for index in range(term_count):
         poly = random_polynomial(variables, random.choice([2, 3]))
@@ -168,18 +145,23 @@ def build_add_sub_expression(variables: Sequence[sp.Symbol]) -> tuple[str, sp.Ex
         if index == 0:
             sign = 1
             prefix = ""
+            latex_prefix = ""
         else:
             sign = random.choice([1, -1])
             prefix = " + " if sign == 1 else " - "
+            latex_prefix = " + " if sign == 1 else " - "
         total_expr += sign * poly
         segments.append(f"{prefix}({display})")
+        latex_poly = sp.latex(poly)
+        latex_segments.append(f"{latex_prefix}\\left({latex_poly}\\right)")
     display_expression = "".join(segments)
-    return display_expression, total_expr
+    latex_expression = "".join(latex_segments).lstrip()
+    return display_expression, latex_expression, total_expr
 
 
 def build_mul_div_expression(
     variables: Sequence[sp.Symbol],
-) -> tuple[str, sp.Expr]:
+) -> tuple[str, str, sp.Expr]:
     # 乘除题包含三种结构，全部保证结果仍旧是整式，便于比对。
     pattern = random.choice(["binomial_product", "monomial_product", "polynomial_division"])
     if pattern == "binomial_product":
@@ -191,7 +173,8 @@ def build_mul_div_expression(
         expr1 = a1 * var + b1
         expr2 = a2 * var + b2
         display = f"({humanize_expression(expr1, variables)})({humanize_expression(expr2, variables)})"
-        return display, sp.expand(expr1 * expr2)
+        latex_display = f"\\left({sp.latex(expr1)}\\right)\\left({sp.latex(expr2)}\\right)"
+        return display, latex_display, sp.expand(expr1 * expr2)
     if pattern == "monomial_product":
         var = random.choice(list(variables))
         coeff = random.randint(2, 6)
@@ -199,7 +182,8 @@ def build_mul_div_expression(
         mono = coeff * var**power
         poly = random_polynomial(variables, random.choice([2, 3]))
         display = f"({humanize_expression(mono, variables)})({humanize_expression(poly, variables)})"
-        return display, sp.expand(mono * poly)
+        latex_display = f"\\left({sp.latex(mono)}\\right)\\left({sp.latex(poly)}\\right)"
+        return display, latex_display, sp.expand(mono * poly)
     # polynomial_division
     # 为了保持可约性，这里仍然只在一个变量上构造除法结构。
     var = random.choice(list(variables))
@@ -207,13 +191,14 @@ def build_mul_div_expression(
     quotient = random_polynomial((var,), random.choice([1, 2]))
     dividend = sp.expand(divisor * quotient)
     display = f"({humanize_expression(dividend, (var,))}) / ({humanize_expression(divisor, (var,))})"
-    return display, sp.simplify(dividend / divisor)
+    latex_display = f"\\frac{{{sp.latex(dividend)}}}{{{sp.latex(divisor)}}}"
+    return display, latex_display, sp.simplify(dividend / divisor)
 
 
 def build_factorization_expression(
     variables: Sequence[sp.Symbol],
     difficulty_level: DifficultyLevel,
-) -> tuple[str, sp.Expr]:
+) -> tuple[str, str, sp.Expr]:
     # 因式分解题基于常见模式：
     # - 完全平方
     # - 二次三项式
@@ -239,7 +224,7 @@ def build_factorization_expression(
         a = random.randint(1, 4)
         b = random.randint(-6, 6)
         expr = sp.expand((a * var + b) ** 2)
-        return humanize_expression(expr, variables), expr
+        return humanize_expression(expr, variables), sp.latex(expr), expr
     if pattern == "quadratic":
         var = random.choice(list(variables))
         p = random.randint(1, 4)
@@ -247,7 +232,7 @@ def build_factorization_expression(
         m = random.randint(-6, 6)
         n = random.randint(-6, 6)
         expr = sp.expand((p * var + m) * (q * var + n))
-        return humanize_expression(expr, variables), expr
+        return humanize_expression(expr, variables), sp.latex(expr), expr
     if pattern == "diff_square":
         var1 = random.choice(list(variables))
         # 平方差可以是单变量也可以是多变量，例如 (ax)^2 - (by)^2
@@ -262,7 +247,7 @@ def build_factorization_expression(
             if not (var1 is var2 and a == b):
                 break
         expr = (a * var1) ** 2 - (b * var2) ** 2
-        return humanize_expression(expr, variables), expr
+        return humanize_expression(expr, variables), sp.latex(expr), expr
     if pattern == "quadratic_times_linear":
         # 形如 (ax^2 + bx + c)(dx + e)，体现“配方法 / 双十字相乘”的综合难度。
         var = random.choice(list(variables))
@@ -272,7 +257,7 @@ def build_factorization_expression(
         d = random.randint(1, 3)
         e = random.randint(-5, 5)
         expr = sp.expand((a * var**2 + b * var + c) * (d * var + e))
-        return humanize_expression(expr, variables), expr
+        return humanize_expression(expr, variables), sp.latex(expr), expr
     if pattern == "multi_var_quadratic" and len(variables) >= 2:
         # 形如 (ax + by + c)(dx + ey + f)，需要对多元二次式分解。
         v1, v2 = random.sample(list(variables), 2)
@@ -283,7 +268,7 @@ def build_factorization_expression(
         c1 = random.randint(-5, 5)
         c2 = random.randint(-5, 5)
         expr = sp.expand((a1 * v1 + b1 * v2 + c1) * (a2 * v1 + b2 * v2 + c2))
-        return humanize_expression(expr, variables), expr
+        return humanize_expression(expr, variables), sp.latex(expr), expr
     # grouping：按分组提取公因式的思路构造。
     var = random.choice(list(variables))
     a = random.randint(1, 5)
@@ -291,7 +276,7 @@ def build_factorization_expression(
     c = random.randint(-6, 6)
     d = random.randint(-6, 6)
     expr = sp.expand((a * var + c) * var + (b * var + d) * var)
-    return humanize_expression(expr, variables), expr
+    return humanize_expression(expr, variables), sp.latex(expr), expr
 
 
 def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
@@ -384,18 +369,17 @@ def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> Genera
 
     for _ in range(200):
         if topic == "add_sub":
-            expression_text, expr = build_add_sub_expression(symbols)
+            expression_text, expression_latex, expr = build_add_sub_expression(symbols)
             solution = sp.simplify(expr)
         elif topic == "mul_div":
-            expression_text, expr = build_mul_div_expression(symbols)
+            expression_text, expression_latex, expr = build_mul_div_expression(symbols)
             solution = sp.simplify(expr)
         else:
-            expression_text, expr = build_factorization_expression(symbols, difficulty_level)
+            expression_text, expression_latex, expr = build_factorization_expression(symbols, difficulty_level)
             solution = sp.factor(expr)
 
         difficulty_score = compute_difficulty(expr, topic)
         if target_range[0] <= difficulty_score <= target_range[1]:
-            expression_latex = expression_text_to_latex(expression_text)
             return GeneratedQuestion(
                 question_id=str(uuid.uuid4()),
                 expression_text=expression_text,
