@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from typing import Literal, Sequence
 
 import sympy as sp
+from sympy.parsing.sympy_parser import (
+    implicit_multiplication_application,
+    parse_expr,
+    standard_transformations,
+)
 
 # 允许在题目中出现的未知数集合，后面会根据难度选择其中 1~3 个。
 VARIABLE_NAMES: tuple[str, ...] = ("x", "y", "z")
@@ -13,6 +18,8 @@ VARIABLE_SYMBOLS: dict[str, sp.Symbol] = {name: sp.Symbol(name) for name in VARI
 
 # 兼容原有只用 x 的实现
 x = VARIABLE_SYMBOLS["x"]
+
+_TRANSFORMATIONS = standard_transformations + (implicit_multiplication_application,)
 
 Topic = Literal["add_sub", "mul_div", "factorization"]
 DifficultyLevel = Literal["basic", "intermediate", "advanced"]
@@ -30,10 +37,28 @@ DIFFICULTY_RANGES: dict[DifficultyLevel, tuple[int, int]] = {
 class GeneratedQuestion:
     question_id: str
     expression_text: str
+    expression_latex: str
     solution_expression: str
     topic: Topic
     difficulty_level: DifficultyLevel
     difficulty_score: int
+
+
+def expression_text_to_latex(text: str) -> str:
+    """Convert the human input string to LaTeX for nicer display."""
+
+    sanitized = text.replace("^", "**")
+    try:
+        expr = parse_expr(
+            sanitized,
+            local_dict=VARIABLE_SYMBOLS,
+            transformations=_TRANSFORMATIONS,
+            evaluate=False,
+        )
+        return sp.latex(expr)
+    except Exception:
+        # 回退到原始字符串，至少保证有内容可展示。
+        return text
 
 
 def humanize_expression(expr: sp.Expr, symbols: Sequence[sp.Symbol] | None = None) -> str:
@@ -370,9 +395,11 @@ def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> Genera
 
         difficulty_score = compute_difficulty(expr, topic)
         if target_range[0] <= difficulty_score <= target_range[1]:
+            expression_latex = expression_text_to_latex(expression_text)
             return GeneratedQuestion(
                 question_id=str(uuid.uuid4()),
                 expression_text=expression_text,
+                expression_latex=expression_latex,
                 solution_expression=str(solution),
                 topic=topic,
                 difficulty_level=difficulty_level,

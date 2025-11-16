@@ -138,6 +138,7 @@ def create_question(payload: GenerateQuestionRequest, db: Session = Depends(get_
         topic=db_question.topic,
         difficultyLevel=db_question.difficulty_level,
         expressionText=db_question.expression_text,
+        expressionLatex=question.expression_latex,
         difficultyScore=db_question.difficulty_score,
     )
 

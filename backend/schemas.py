@@ -32,6 +32,7 @@ class GenerateQuestionResponse(BaseModel):
     topic: str
     difficulty_level: str = Field(alias="difficultyLevel")
     expression_text: str = Field(alias="expressionText")
+    expression_latex: str = Field(alias="expressionLatex")
     difficulty_score: int = Field(alias="difficultyScore")
 
 

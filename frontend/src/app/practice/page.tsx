@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavBar from "@/components/NavBar";
+import LatexExpression from "@/components/LatexExpression";
 import { useStoredUser } from "@/hooks/useStoredUser";
 import { apiPost } from "@/lib/api";
 
@@ -23,6 +24,7 @@ type QuestionResponse = {
   topic: string;
   difficultyLevel: string;
   expressionText: string;
+  expressionLatex: string;
   difficultyScore: number;
 };
 
@@ -174,7 +176,7 @@ export default function PracticePage() {
   const canGoNext = status === "correct" || attemptCount >= 3;
   const currentTopic = useMemo(() => TOPICS.find((item) => item.id === selectedTopic), [selectedTopic]);
   const instructions =
-    "输入规则：按题目给出的字母作为未知数（可能包含 x、y、z），^ 表示乘方（如 x^2），/ 表示分数（如 1/2），乘号可省略，空格可写可不写。";
+    "输入规则：按题目给出的字母作为未知数（可能包含 x、y、z），^ 表示乘方（如 x^2），/ 表示分数（如 1/2），乘号可省略，空格可写可不写。上方蓝底区域是卷面写法，下面灰底示例提醒你如何键盘输入。";
 
   if (!user) {
     return (
@@ -282,7 +284,18 @@ export default function PracticePage() {
             {!loadingQuestion && question && (
               <>
                 <p className="text-sm uppercase text-gray-500">当前表达式</p>
-                <p className="mt-2 text-2xl font-semibold text-gray-900">{question.expressionText}</p>
+                <div className="mt-3 space-y-4">
+                  <div className="rounded-2xl border border-purple-100 bg-white/70 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-purple-500">卷面展示</p>
+                    <LatexExpression expression={question.expressionLatex} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">输入示例</p>
+                    <p className="mt-1 rounded-xl border border-slate-200 bg-white px-4 py-2 font-mono text-lg font-semibold text-gray-900">
+                      {question.expressionText}
+                    </p>
+                  </div>
+                </div>
               </>
             )}
           </div>
