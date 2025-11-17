@@ -6,10 +6,10 @@ export function getCatStage(catScore: number): number {
 }
 
 export function getCatImage(stage: number): string {
-  if (stage === 1) return "/images/cat-stage-1.png";
-  if (stage === 2) return "/images/cat-stage-2.png";
-  if (stage === 3) return "/images/cat-stage-3.png";
-  return "/images/cat-stage-4.png";
+  if (stage === 1) return "/images/cat-stage-1.gif";
+  if (stage === 2) return "/images/cat-stage-2.gif";
+  if (stage === 3) return "/images/cat-stage-3.gif";
+  return "/images/cat-stage-4.gif";
 }
 
 export function stageLabel(stage: number): string {

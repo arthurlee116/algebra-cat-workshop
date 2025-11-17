@@ -14,7 +14,7 @@ VARIABLE_SYMBOLS: dict[str, sp.Symbol] = {name: sp.Symbol(name) for name in VARI
 # 兼容原有只用 x 的实现
 x = VARIABLE_SYMBOLS["x"]
 
-Topic = Literal["add_sub", "mul_div", "factorization"]
+Topic = Literal["add_sub", "mul_div", "factorization", "mixed_ops"]
 DifficultyLevel = Literal["basic", "intermediate", "advanced"]
 
 # Target ranges for each difficulty bucket so the generator can retry until
@@ -279,6 +279,126 @@ def build_factorization_expression(
     return humanize_expression(expr, variables), sp.latex(expr), expr
 
 
+def build_mixed_ops_expression(variables: Sequence[sp.Symbol]) -> tuple[str, str, sp.Expr]:
+    """生成整式加减乘除混合表达式，确保化简后为多项式。"""
+    is_basic = len(variables) == 1
+    if is_basic:
+        patterns = ["add_mul", "div_add"]
+    else:
+        patterns = ["add_mul", "div_add", "multi_div_add"]
+    pattern = random.choice(patterns)
+
+    text_segments: list[str] = []
+    latex_segments: list[str] = []
+    expr = sp.Integer(0)
+
+    if pattern == "add_mul":
+        # 模式 A: 加减与乘法混合，如 P1 +/- M * P2 +/- P3
+        p1 = random_polynomial(variables, random.choice([1, 2]))
+        m_coeff = random.choice([2, 3, 4])
+        m_var = random.choice(list(variables))
+        m = m_coeff * m_var
+        p2 = random_polynomial(variables, random.choice([1, 2]))
+        p3 = random_polynomial(variables, 1)
+
+        signs = [1, random.choice([1, -1]), random.choice([1, -1])]
+        parts = [p1, signs[1] * m * p2, signs[2] * p3]
+
+        for i, part in enumerate(parts):
+            if i == 0:
+                prefix = ""
+                latex_prefix = ""
+            else:
+                prefix = " + " if signs[i] > 0 else " - "
+                latex_prefix = " + " if signs[i] > 0 else " - "
+            display_part = humanize_expression(part, variables)
+            text_segments.append(f"{prefix}({display_part})")
+            latex_part = sp.latex(part)
+            latex_segments.append(f"{latex_prefix}\\left({latex_part}\\right)")
+
+        expr = sum(parts)
+
+    elif pattern == "div_add":
+        # 模式 B: 可约除法 + 加减乘
+        var = random.choice(list(variables))
+        divisor = random_polynomial((var,), 1)
+        if divisor == 0:
+            return build_mixed_ops_expression(variables)  # retry
+        quotient = random_polynomial((var,), random.choice([1, 2]))
+        dividend = sp.expand(divisor * quotient)
+
+        div_text = f"({humanize_expression(dividend, variables)}) / ({humanize_expression(divisor, variables)})"
+        div_latex = f"\\frac{{{sp.latex(dividend)}}}{{{sp.latex(divisor)}}}"
+        text_segments.append(div_text)
+        latex_segments.append(div_latex)
+
+        p1 = random_polynomial(variables, 1)
+        sign1 = random.choice([1, -1])
+        prefix1 = " + " if sign1 > 0 else " - "
+        latex_prefix1 = " + " if sign1 > 0 else " - "
+        text_segments.append(f"{prefix1}{humanize_expression(p1, variables)}")
+        latex_segments.append(f"{latex_prefix1}{sp.latex(p1)}")
+
+        m_coeff = random.choice([2, 3])
+        m_var = random.choice(list(variables))
+        m = m_coeff * m_var
+        p2 = random_polynomial(variables, 1)
+        sign2 = random.choice([1, -1])
+        prefix2 = " + " if sign2 > 0 else " - "
+        latex_prefix2 = " + " if sign2 > 0 else " - "
+        text_segments.append(f"{prefix2}{humanize_expression(m, variables)}({humanize_expression(p2, variables)})")
+        latex_segments.append(f"{latex_prefix2}{sp.latex(m)}\\left({sp.latex(p2)}\\right)")
+
+        expr = sp.simplify(dividend / divisor + sign1 * p1 + sign2 * m * p2)
+
+    elif pattern == "multi_div_add":
+        # 模式 C: 多个可约除 + 加减，多元
+        var1 = random.choice(list(variables))
+        divisor1 = random_polynomial((var1,), 1)
+        if divisor1 == 0:
+            return build_mixed_ops_expression(variables)
+        quotient1 = random_polynomial(variables, 1)
+        dividend1 = sp.expand(divisor1 * quotient1)
+
+        div1_text = f"({humanize_expression(dividend1, variables)}) / ({humanize_expression(divisor1, variables)})"
+        div1_latex = f"\\frac{{{sp.latex(dividend1)}}}{{{sp.latex(divisor1)}}}"
+        text_segments.append(div1_text)
+        latex_segments.append(div1_latex)
+
+        var2 = random.choice([v for v in variables if v != var1]) if len(variables) > 1 else var1
+        divisor2 = random_polynomial((var2,), 1)
+        if divisor2 == 0:
+            return build_mixed_ops_expression(variables)
+        quotient2 = random_polynomial(variables, 1)
+        dividend2 = sp.expand(divisor2 * quotient2)
+
+        sign_div2 = random.choice([1, -1])
+        prefix_div2 = " + " if sign_div2 > 0 else " - "
+        latex_prefix_div2 = " + " if sign_div2 > 0 else " - "
+        div2_text = f"({humanize_expression(dividend2, variables)}) / ({humanize_expression(divisor2, variables)})"
+        div2_latex = f"\\frac{{{sp.latex(dividend2)}}}{{{sp.latex(divisor2)}}}"
+        text_segments.append(f"{prefix_div2}{div2_text}")
+        latex_segments.append(f"{latex_prefix_div2}{div2_latex}")
+
+        p3 = random_polynomial(variables, 1)
+        sign_p3 = random.choice([1, -1])
+        prefix_p3 = " + " if sign_p3 > 0 else " - "
+        latex_prefix_p3 = " + " if sign_p3 > 0 else " - "
+        text_segments.append(f"{prefix_p3}{humanize_expression(p3, variables)}")
+        latex_segments.append(f"{latex_prefix_p3}{sp.latex(p3)}")
+
+        expr = sp.simplify(dividend1 / divisor1 + sign_div2 * (dividend2 / divisor2) + sign_p3 * p3)
+
+    expression_text = "".join(text_segments).strip()
+    expression_latex = "".join(latex_segments).strip()
+    if expression_text.startswith("+ "):
+        expression_text = expression_text[2:]
+    if expression_latex.startswith("+"):
+        expression_latex = expression_latex[1:]
+
+    return expression_text, expression_latex, expr
+
+
 def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
     """Rough difficulty estimation between 0 and 100."""
 
@@ -343,13 +463,15 @@ def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
             score += 5
     if topic == "mul_div":
         score += 5
+    if topic == "mixed_ops":
+        score += 8
 
     score = max(0.0, min(100.0, score))
     return int(round(score))
 
 
 def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> GeneratedQuestion:
-    if topic not in {"add_sub", "mul_div", "factorization"}:
+    if topic not in {"add_sub", "mul_div", "factorization", "mixed_ops"}:
         raise ValueError("未知题型")
 
     target_range = DIFFICULTY_RANGES[difficulty_level]
@@ -374,7 +496,10 @@ def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> Genera
         elif topic == "mul_div":
             expression_text, expression_latex, expr = build_mul_div_expression(symbols)
             solution = sp.simplify(expr)
-        else:
+        elif topic == "mixed_ops":
+            expression_text, expression_latex, expr = build_mixed_ops_expression(symbols)
+            solution = sp.simplify(expr)
+        else:  # factorization
             expression_text, expression_latex, expr = build_factorization_expression(symbols, difficulty_level)
             solution = sp.factor(expr)
 
