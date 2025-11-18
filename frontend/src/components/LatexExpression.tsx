@@ -2,12 +2,15 @@
 
 import { useEffect, useRef } from "react";
 
-declare global {
-  interface Window {
-    katex?: {
-      render: (expression: string, element: HTMLElement, options?: Record<string, unknown>) => void;
-    };
+type KatexModule = typeof import("katex");
+
+let katexPromise: Promise<KatexModule> | null = null;
+
+function loadKatex() {
+  if (!katexPromise) {
+    katexPromise = import("katex");
   }
+  return katexPromise;
 }
 
 type LatexExpressionProps = {
@@ -19,22 +22,28 @@ export default function LatexExpression({ expression, displayMode = true }: Late
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    if (typeof window === "undefined") return;
+    const element = containerRef.current;
+    if (!element) return;
 
-    if (window.katex?.render) {
-      try {
-        window.katex.render(expression, containerRef.current, {
+    element.textContent = expression;
+
+    let cancelled = false;
+    loadKatex()
+      .then((katex) => {
+        if (cancelled || !containerRef.current) return;
+        katex.render(expression, containerRef.current, {
           throwOnError: false,
           displayMode,
           strict: "warn",
         });
-        return;
-      } catch (error) {
+      })
+      .catch((error) => {
         console.error("渲染 LaTeX 失败", error);
-      }
-    }
-    containerRef.current.textContent = expression;
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [expression, displayMode]);
 
   return (

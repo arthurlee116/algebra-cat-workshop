@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -25,20 +24,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-Hans">
-      <head>
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
-          crossOrigin="anonymous"
-        />
-      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50`}>
         {children}
-        <Script
-          src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
-          strategy="beforeInteractive"
-          crossOrigin="anonymous"
-        />
       </body>
     </html>
   );
