@@ -61,12 +61,15 @@ export default function LoginPage() {
         </section>
         <section className="flex-1 rounded-2xl bg-white p-8 shadow-lg">
           <h2 className="text-2xl font-semibold text-purple-700">登录 / 创建学生档案</h2>
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit} autoComplete="off">
             <label className="block text-sm font-medium text-gray-700">
               中文姓名
               <input
                 type="text"
                 required
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 value={form.chinese_name}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, chinese_name: event.target.value }))
@@ -79,6 +82,9 @@ export default function LoginPage() {
               <input
                 type="text"
                 required
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 value={form.english_name}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, english_name: event.target.value }))
@@ -91,6 +97,9 @@ export default function LoginPage() {
               <input
                 type="text"
                 required
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 value={form.class_name}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, class_name: event.target.value }))
