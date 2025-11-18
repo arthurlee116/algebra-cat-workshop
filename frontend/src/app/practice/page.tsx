@@ -10,6 +10,7 @@ import { apiPost } from "@/lib/api";
 const TOPICS = [
   { id: "add_sub", label: "整式加减", hint: "专注合并同类项，括号要展开再合并" },
   { id: "mul_div", label: "整式乘除", hint: "先约掉公因子，再整理次数" },
+  { id: "poly_ops", label: "加减 × 乘除", hint: "拆括号后还要处理乘法或可约除法" },
   { id: "mixed_ops", label: "整式加减乘除混合", hint: "加减乘除综合，先约分再展开合并同类项" },
   { id: "factorization", label: "因式分解", hint: "留意完全平方、平方差和分组法" },
 ] as const;

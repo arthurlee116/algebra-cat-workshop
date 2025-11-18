@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import uuid
 from dataclasses import dataclass
+from collections import Counter
 from typing import Literal, Sequence
 
 import sympy as sp
@@ -14,7 +15,7 @@ VARIABLE_SYMBOLS: dict[str, sp.Symbol] = {name: sp.Symbol(name) for name in VARI
 # 兼容原有只用 x 的实现
 x = VARIABLE_SYMBOLS["x"]
 
-Topic = Literal["add_sub", "mul_div", "factorization", "mixed_ops"]
+Topic = Literal["add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"]
 DifficultyLevel = Literal["basic", "intermediate", "advanced"]
 
 # Target ranges for each difficulty bucket so the generator can retry until
@@ -103,60 +104,198 @@ def random_polynomial(
     max_total_degree: int,
     coeff_min: int = -6,
     coeff_max: int = 6,
+    min_terms: int = 1,
 ) -> sp.Expr:
     """Generate a small random polynomial in the given variables."""
 
-    term_count = random.randint(2, 4)
-    expr = sp.Integer(0)
-    for _ in range(term_count):
-        coeff = random.randint(coeff_min, coeff_max)
-        if coeff == 0:
+    var_list = list(variables)
+    if not var_list:
+        var_list = [x]
+
+    for _ in range(20):
+        term_count = random.randint(max(2, min_terms), max(4, min_terms))
+        expr = sp.Integer(0)
+        for _ in range(term_count):
+            coeff = random.randint(coeff_min, coeff_max)
+            if coeff == 0:
+                continue
+            monomial = sp.Integer(1)
+            total_degree = 0
+            # 为当前项随机选择每个变量的指数，控制总次数不超过 max_total_degree。
+            for symbol in var_list:
+                if total_degree >= max_total_degree:
+                    power = 0
+                else:
+                    power = random.randint(0, max_total_degree - total_degree)
+                if power > 0:
+                    monomial *= symbol**power
+                    total_degree += power
+            if total_degree == 0:
+                # 避免所有指数都为 0 导致纯常数项
+                symbol = random.choice(var_list)
+                monomial = symbol
+            expr += coeff * monomial
+        if expr == 0:
             continue
-        monomial = sp.Integer(1)
-        total_degree = 0
-        # 为当前项随机选择每个变量的指数，控制总次数不超过 max_total_degree。
-        for symbol in variables:
-            if total_degree >= max_total_degree:
-                power = 0
-            else:
-                power = random.randint(0, max_total_degree - total_degree)
-            if power > 0:
-                monomial *= symbol**power
-                total_degree += power
-        if total_degree == 0:
-            # 避免所有指数都为 0 导致纯常数项
-            symbol = random.choice(list(variables))
-            monomial = symbol
-        expr += coeff * monomial
-    if expr == 0:
-        return random_polynomial(variables, max_total_degree, coeff_min, coeff_max)
+        try:
+            poly_view = sp.Poly(expr, *var_list)
+        except sp.PolynomialError:
+            return expr
+        if len(poly_view.terms()) >= min_terms:
+            return expr
     return expr
 
 
-def build_add_sub_expression(variables: Sequence[sp.Symbol]) -> tuple[str, str, sp.Expr]:
+def build_add_sub_expression(
+    variables: Sequence[sp.Symbol],
+    difficulty_level: DifficultyLevel,
+) -> tuple[str, str, sp.Expr]:
     # 多项式加减：随机组合 2-4 个多项式，并记录括号表达式方便前端显示。
-    term_count = random.randint(2, 4)
-    segments: list[str] = []
-    latex_segments: list[str] = []
-    total_expr = sp.Integer(0)
-    for index in range(term_count):
-        poly = random_polynomial(variables, random.choice([2, 3]))
-        display = humanize_expression(poly, variables)
-        if index == 0:
-            sign = 1
-            prefix = ""
-            latex_prefix = ""
-        else:
-            sign = random.choice([1, -1])
-            prefix = " + " if sign == 1 else " - "
-            latex_prefix = " + " if sign == 1 else " - "
-        total_expr += sign * poly
-        segments.append(f"{prefix}({display})")
-        latex_poly = sp.latex(poly)
-        latex_segments.append(f"{latex_prefix}\\left({latex_poly}\\right)")
-    display_expression = "".join(segments)
-    latex_expression = "".join(latex_segments).lstrip()
-    return display_expression, latex_expression, total_expr
+    config = {
+        "basic": {
+            "group_range": (3, 4),
+            "degree_choices": [1, 2],
+            "coeff_range": (-4, 4),
+            "min_merge_targets": 2,
+            "min_result_terms": 3,
+            "min_degree": 1,
+            "max_result_terms": 5,
+        },
+        "intermediate": {
+            "group_range": (3, 5),
+            "degree_choices": [2, 3],
+            "coeff_range": (-7, 7),
+            "min_merge_targets": 3,
+            "min_result_terms": 4,
+            "min_degree": 2,
+            "max_result_terms": 7,
+        },
+        "advanced": {
+            "group_range": (4, 5),
+            "degree_choices": [2, 4],
+            "coeff_range": (-8, 8),
+            "min_merge_targets": 4,
+            "min_result_terms": 5,
+            "min_degree": 2,
+            "max_result_terms": 9,
+        },
+    }[difficulty_level]
+
+    var_list = list(variables) or [x]
+    shared_terms: list[sp.Expr] = []
+    min_merge_targets = config["min_merge_targets"]
+    min_result_terms = config["min_result_terms"]
+    min_degree = config["min_degree"]
+    attempt = 0
+    max_attempts = 160
+    while attempt < max_attempts:
+        attempt += 1
+        if attempt in {80, 120}:
+            min_merge_targets = max(1, min_merge_targets - 1)
+            min_result_terms = max(2, min_result_terms - 1)
+            if difficulty_level == "basic":
+                min_degree = 1
+            else:
+                min_degree = max(1, min_degree - 1)
+        group_count = random.randint(*config["group_range"])
+        segments: list[str] = []
+        latex_segments: list[str] = []
+        total_expr = sp.Integer(0)
+        monom_counts: Counter[tuple[int, ...]] = Counter()
+
+        aborted = False
+        for index in range(group_count):
+            coeff_min, coeff_max = config["coeff_range"]
+            for _ in range(8):
+                max_degree = random.choice(config["degree_choices"])
+                poly = random_polynomial(
+                    variables,
+                    max_degree,
+                    coeff_min=coeff_min,
+                    coeff_max=coeff_max,
+                    min_terms=2,
+                )
+                # 高级难度中偶尔插入一次高次项，制造平方/立方的感觉。
+                if difficulty_level != "basic" and random.random() < 0.4:
+                    var = random.choice(var_list)
+                    high_power = random.randint(2, 3 if difficulty_level == "intermediate" else 4)
+                    booster = random.randint(1, 3) * var**high_power
+                    poly += booster
+
+                # 强制制造可合并项：从之前的单项式中挑一些加入当前括号。
+                if shared_terms and random.random() < 0.8:
+                    term = random.choice(shared_terms)
+                    coeff = random.randint(-4, 4) or 1
+                    poly += coeff * term
+
+                poly = sp.expand(poly)
+                if poly != 0:
+                    break
+            else:
+                aborted = True
+                break
+
+            if index == 0:
+                sign = 1
+                prefix = ""
+                latex_prefix = ""
+            else:
+                sign = random.choice([1, -1])
+                prefix = " + " if sign == 1 else " - "
+                latex_prefix = " + " if sign == 1 else " - "
+
+            total_expr += sign * poly
+            display = humanize_expression(poly, variables)
+            segments.append(f"{prefix}({display})")
+            latex_poly = sp.latex(poly)
+            latex_segments.append(f"{latex_prefix}\\left({latex_poly}\\right)")
+
+            try:
+                poly_terms = sp.Poly(poly, *variables).terms()
+            except sp.PolynomialError:
+                poly_terms = []
+            current_terms: list[sp.Expr] = []
+            for monom, _ in poly_terms:
+                monom_counts[monom] += 1
+                term_expr = sp.Integer(1)
+                for power, symbol in zip(monom, var_list):
+                    if power:
+                        term_expr *= symbol**power
+                current_terms.append(term_expr)
+
+            if current_terms:
+                sample = random.sample(current_terms, k=min(len(current_terms), 2))
+                shared_terms.extend(sample)
+                if len(shared_terms) > 12:
+                    shared_terms = shared_terms[-12:]
+
+        if aborted:
+            continue
+
+        try:
+            expanded = sp.expand(total_expr)
+            poly_view = sp.Poly(expanded, *variables)
+            term_count = len(poly_view.terms())
+            degree = poly_view.total_degree()
+        except sp.PolynomialError:
+            continue
+
+        merge_targets = sum(1 for count in monom_counts.values() if count > 1)
+        if merge_targets < min_merge_targets:
+            continue
+        if term_count < min_result_terms:
+            continue
+        max_result_terms = config.get("max_result_terms")
+        if max_result_terms and term_count > max_result_terms:
+            continue
+        if degree < min_degree:
+            continue
+
+        display_expression = "".join(segments).strip()
+        latex_expression = "".join(latex_segments).lstrip()
+        return display_expression, latex_expression, expanded
+
+    raise RuntimeError("无法生成满足要求的整式加减题")
 
 
 def build_mul_div_expression(
@@ -399,6 +538,121 @@ def build_mixed_ops_expression(variables: Sequence[sp.Symbol]) -> tuple[str, str
     return expression_text, expression_latex, expr
 
 
+def build_poly_ops_expression(
+    variables: Sequence[sp.Symbol],
+    difficulty_level: DifficultyLevel,
+) -> tuple[str, str, sp.Expr]:
+    """整式加减与乘除的折中题型，保证表达式同时含有拆括号/加减与乘除结构。"""
+
+    var_choices = list(variables) or [x]
+    segments: list[str] = []
+    latex_segments: list[str] = []
+    expr = sp.Integer(0)
+
+    def _poly(degree: int, min_terms: int = 2) -> sp.Expr:
+        return random_polynomial(
+            variables,
+            degree,
+            coeff_min=-6 if difficulty_level == "basic" else -8,
+            coeff_max=6 if difficulty_level == "basic" else 8,
+            min_terms=min_terms,
+        )
+
+    def _append(piece: sp.Expr, text: str, latex_text: str, sign: int = 1) -> None:
+        nonlocal expr
+        expr += sign * piece
+        if not segments:
+            prefix_text = ""
+            prefix_latex = ""
+        else:
+            prefix_text = " + " if sign > 0 else " - "
+            prefix_latex = " + " if sign > 0 else " - "
+        segments.append(f"{prefix_text}{text}")
+        latex_segments.append(f"{prefix_latex}{latex_text}")
+
+    base = _poly(2)
+    _append(base, f"({humanize_expression(base, variables)})", f"\\left({sp.latex(base)}\\right)", 1)
+
+    patterns = ["frac_mul", "double_mul", "nested_mix"]
+    if difficulty_level != "basic":
+        patterns.append("fraction_double")
+    pattern = random.choice(patterns)
+
+    if pattern == "frac_mul":
+        var = random.choice(var_choices)
+        divisor = random_polynomial((var,), 1, min_terms=1)
+        if divisor == 0:
+            divisor = var
+        quotient = random_polynomial((var,), random.choice([1, 2]), min_terms=1)
+        dividend = sp.expand(divisor * quotient)
+        frac = sp.simplify(dividend / divisor)
+        frac_text = f"({humanize_expression(dividend, variables)}) / ({humanize_expression(divisor, variables)})"
+        frac_latex = f"\\frac{{{sp.latex(dividend)}}}{{{sp.latex(divisor)}}}"
+        _append(frac, frac_text, frac_latex, random.choice([1, -1]))
+
+        mono = random.randint(2, 4) * random.choice(var_choices)
+        mul_poly = _poly(2)
+        mul_expr = sp.expand(mono * mul_poly)
+        mul_text = f"({humanize_expression(mono, variables)})({humanize_expression(mul_poly, variables)})"
+        mul_latex = f"\\left({sp.latex(mono)}\\right)\\left({sp.latex(mul_poly)}\\right)"
+        _append(mul_expr, mul_text, mul_latex, random.choice([1, -1]))
+
+    elif pattern == "double_mul":
+        mono1 = random.randint(2, 5) * random.choice(var_choices)
+        mono2 = random.randint(2, 4) * random.choice(var_choices)
+        poly1 = _poly(2)
+        poly2 = _poly(1)
+        term1 = sp.expand(mono1 * poly1)
+        term2 = sp.expand(mono2 * poly2)
+        text1 = f"({humanize_expression(mono1, variables)})({humanize_expression(poly1, variables)})"
+        text2 = f"({humanize_expression(mono2, variables)})({humanize_expression(poly2, variables)})"
+        latex1 = f"\\left({sp.latex(mono1)}\\right)\\left({sp.latex(poly1)}\\right)"
+        latex2 = f"\\left({sp.latex(mono2)}\\right)\\left({sp.latex(poly2)}\\right)"
+        _append(term1, text1, latex1, random.choice([1, -1]))
+        _append(term2, text2, latex2, random.choice([1, -1]))
+
+    elif pattern == "nested_mix":
+        inner = _poly(1)
+        outer = _poly(2)
+        combined = sp.expand(inner + outer)
+        combo_text = f"(({humanize_expression(inner, variables)}) + ({humanize_expression(outer, variables)}))"
+        combo_latex = f"\\left(\\left({sp.latex(inner)}\\right)+\\left({sp.latex(outer)}\\right)\\right)"
+        _append(combined, combo_text, combo_latex, random.choice([1, -1]))
+
+        mono = random.randint(2, 4) * random.choice(var_choices)
+        bonus = _poly(2)
+        bonus_expr = sp.expand(mono * bonus)
+        bonus_text = f"({humanize_expression(mono, variables)})({humanize_expression(bonus, variables)})"
+        bonus_latex = f"\\left({sp.latex(mono)}\\right)\\left({sp.latex(bonus)}\\right)"
+        _append(bonus_expr, bonus_text, bonus_latex, random.choice([1, -1]))
+
+    else:  # fraction_double
+        var1 = random.choice(var_choices)
+        divisor1 = random_polynomial((var1,), 1, min_terms=1) or var1
+        quotient1 = random_polynomial((var1,), random.choice([1, 2]), min_terms=1)
+        dividend1 = sp.expand(divisor1 * quotient1)
+        frac1 = sp.simplify(dividend1 / divisor1)
+        text1 = f"({humanize_expression(dividend1, variables)}) / ({humanize_expression(divisor1, variables)})"
+        latex1 = f"\\frac{{{sp.latex(dividend1)}}}{{{sp.latex(divisor1)}}}"
+        _append(frac1, text1, latex1, random.choice([1, -1]))
+
+        divisor2_var = random.choice(var_choices)
+        divisor2 = random_polynomial((divisor2_var,), 1, min_terms=1) or divisor2_var
+        quotient2 = random_polynomial((divisor2_var,), 1, min_terms=1)
+        dividend2 = sp.expand(divisor2 * quotient2)
+        frac2 = sp.simplify(dividend2 / divisor2)
+        text2 = f"({humanize_expression(dividend2, variables)}) / ({humanize_expression(divisor2, variables)})"
+        latex2 = f"\\frac{{{sp.latex(dividend2)}}}{{{sp.latex(divisor2)}}}"
+        _append(frac2, text2, latex2, random.choice([1, -1]))
+
+    tail = _poly(1)
+    _append(tail, f"({humanize_expression(tail, variables)})", f"\\left({sp.latex(tail)}\\right)", random.choice([1, -1]))
+
+    display_expression = "".join(segments).strip()
+    latex_expression = "".join(latex_segments).strip()
+    return display_expression, latex_expression, sp.simplify(expr)
+
+
 def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
     """Rough difficulty estimation between 0 and 100."""
 
@@ -444,15 +698,47 @@ def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
     var_count = len({s.name for s in used_symbols})
 
     # 通过“次数 + 项数 + 系数大小 + 未知数个数 + 是否复杂题型”综合估计难度。
-    score = 0.0
-    score += degree * 15
-    score += term_count * 6
-    score += min(max_coeff, 10.0) * 2
+    if topic == "add_sub":
+        degree_weight = 6.0
+        term_weight = 3.0
+        coeff_weight = 1.2
+        base_bonus = 5.0
+    elif topic == "poly_ops":
+        degree_weight = 8.0
+        term_weight = 4.0
+        coeff_weight = 1.5
+        base_bonus = 4.0
+    else:
+        degree_weight = 15.0
+        term_weight = 6.0
+        coeff_weight = 2.0
+        base_bonus = 0.0
+
+    score = base_bonus
+    score += degree * degree_weight
+    score += term_count * term_weight
+    score += min(max_coeff, 10.0) * coeff_weight
     # 多一个未知数，适当加一点难度
     if var_count > 1:
         score += (var_count - 1) * 8
     if has_fraction:
         score += 6
+
+    if topic == "add_sub":
+        if degree >= 3:
+            score += 18
+        if degree >= 4:
+            score += 8
+        if term_count >= 6:
+            score += 6
+        if var_count >= 2:
+            score += 12
+
+    if topic == "poly_ops":
+        if term_count >= 6:
+            score += 8
+        if degree >= 3:
+            score += 6
 
     if topic == "factorization":
         # 因式分解整体偏难一些
@@ -471,13 +757,20 @@ def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
 
 
 def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> GeneratedQuestion:
-    if topic not in {"add_sub", "mul_div", "factorization", "mixed_ops"}:
+    if topic not in {"add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"}:
         raise ValueError("未知题型")
 
     target_range = DIFFICULTY_RANGES[difficulty_level]
     # 因式分解整体偏难一些，基础题也可能落在 60 分左右，这里单独放宽 basic 的区间。
     if topic == "factorization" and difficulty_level == "basic":
         target_range = (0, 70)
+    if topic == "poly_ops":
+        poly_ranges: dict[DifficultyLevel, tuple[int, int]] = {
+            "basic": (15, 55),
+            "intermediate": (40, 75),
+            "advanced": (60, 100),
+        }
+        target_range = poly_ranges[difficulty_level]
 
     # 根据难度选取题目使用的未知数：
     # - basic：固定只使用 x
@@ -491,10 +784,13 @@ def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> Genera
 
     for _ in range(200):
         if topic == "add_sub":
-            expression_text, expression_latex, expr = build_add_sub_expression(symbols)
+            expression_text, expression_latex, expr = build_add_sub_expression(symbols, difficulty_level)
             solution = sp.simplify(expr)
         elif topic == "mul_div":
             expression_text, expression_latex, expr = build_mul_div_expression(symbols)
+            solution = sp.simplify(expr)
+        elif topic == "poly_ops":
+            expression_text, expression_latex, expr = build_poly_ops_expression(symbols, difficulty_level)
             solution = sp.simplify(expr)
         elif topic == "mixed_ops":
             expression_text, expression_latex, expr = build_mixed_ops_expression(symbols)
