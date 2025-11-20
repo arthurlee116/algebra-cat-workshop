@@ -24,8 +24,11 @@ from .question_generator import (
     generate_question,
 )
 from .schemas import (
+    BatchQuestion,
     BuyFoodRequest,
     BuyFoodResponse,
+    BatchGenerateRequest,
+    BatchGenerateResponse,
     CheckAnswerRequest,
     CheckAnswerResponse,
     FoodItem,
@@ -36,7 +39,7 @@ from .schemas import (
     LoginResponse,
     UserSummaryResponse,
 )
-from .services import get_cat_stage, get_score_change, next_stage_threshold
+from .services import generate_batch_questions, get_cat_stage, get_score_change, next_stage_threshold
 
 # Ensure tables exist before the first request
 Base.metadata.create_all(bind=engine)
@@ -140,6 +143,17 @@ def create_question(payload: GenerateQuestionRequest, db: Session = Depends(get_
         expressionText=db_question.expression_text,
         expressionLatex=question.expression_latex,
         difficultyScore=db_question.difficulty_score,
+    )
+
+
+@app.post("/api/questions/batch", response_model=BatchGenerateResponse)
+def batch_generate_questions(payload: BatchGenerateRequest):
+    questions = generate_batch_questions(payload.count, payload.difficulty)
+    return BatchGenerateResponse(
+        questions=[
+            BatchQuestion.model_validate(q, from_attributes=True)
+            for q in questions
+        ]
     )
 
 

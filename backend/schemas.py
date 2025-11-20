@@ -87,3 +87,25 @@ class UserSummaryResponse(BaseModel):
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
+
+
+from typing import Literal, Optional
+
+
+class BatchGenerateRequest(BaseModel):
+    count: int = Field(..., gt=0, le=20)
+    difficulty: Optional[Literal["basic", "intermediate", "advanced"]] = None
+
+
+class BatchQuestion(BaseModel):
+    question_id: str = Field(..., alias="questionId")
+    topic: Literal["add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"]
+    difficulty_level: Literal["basic", "intermediate", "advanced"] = Field(..., alias="difficultyLevel")
+    expression_text: str = Field(..., alias="expressionText")
+    expression_latex: str = Field(..., alias="expressionLatex")
+    difficulty_score: int = Field(..., alias="difficultyScore")
+    solution_expression: str = Field(..., alias="solutionExpression")
+
+
+class BatchGenerateResponse(BaseModel):
+    questions: list[BatchQuestion]

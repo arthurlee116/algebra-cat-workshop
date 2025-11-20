@@ -37,18 +37,26 @@ public/images/   Ark 生成的猫咪与食品静态图
    ```
    FastAPI 默认开放在 `http://127.0.0.1:8000`，可在 `http://127.0.0.1:8000/docs` 查看 API。
 
+5. 测试批量生成端点：
+   ```bash
+   pytest backend/tests -q
+   ```
+
 ### 主要接口
 - `POST /api/login`
 - `POST /api/generate_question`
 - `POST /api/check_answer`
 - `POST /api/buy_food`
+- `POST /api/questions/batch` (new): Generate 1-20 questions in batch. Request: `{ "count": int (1-20), "difficulty"?: "basic"|"intermediate"|"advanced" }`. Response: `{ "questions": [{ "questionId": str, "topic": str, "difficultyLevel": str, "expressionText": str, "expressionLatex": str, "difficultyScore": int, "solutionExpression": str }] }`. Reuses existing generator, no DB persistence/user required.
 - `GET /api/foods`
 - `GET /api/users/{userId}/summary`
 
 题目逻辑、难度评估与计分规则的核心代码分别位于：
-- `backend/question_generator.py`
-- `backend/services.py`
-- `backend/main.py` (SymPy 判分、尝试次数限制)
+- `backend/question_generator.py` (批量生成复用 `generate_question`)
+- `backend/services.py` (新增 `generate_batch_questions`)
+- `backend/main.py` (SymPy 判分、尝试次数限制、新增 `/api/questions/batch` 路由)
+
+前端新增 `frontend/src/hooks/useBatchQuestions.ts` hook 消费批量接口，含 TS 类型和使用示例。
 
 ## 前端运行步骤
 1. 安装依赖：

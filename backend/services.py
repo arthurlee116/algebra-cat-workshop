@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Literal
+import random
+from typing import Optional
 
-DifficultyLevel = Literal["basic", "intermediate", "advanced"]
+from .question_generator import DifficultyLevel, GeneratedQuestion, Topic, generate_question
 
 # 计分规则：根据难度决定一次答对和答错的分差。
 SCORE_RULES: dict[DifficultyLevel, tuple[int, int]] = {
@@ -36,3 +37,15 @@ def next_stage_threshold(total_score: int) -> int:
     if stage == 3:
         return 301
     return total_score
+
+
+def generate_batch_questions(count: int, difficulty: Optional[DifficultyLevel] = None) -> list[GeneratedQuestion]:
+    topics = ["add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"]
+    difficulty_levels = ["basic", "intermediate", "advanced"]
+    questions = []
+    for _ in range(count):
+        topic = random.choice(topics)
+        diff_level = difficulty or random.choice(difficulty_levels)
+        q = generate_question(topic, diff_level)
+        questions.append(q)
+    return questions
