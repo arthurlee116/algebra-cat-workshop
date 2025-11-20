@@ -817,10 +817,20 @@ def generate_batch(count: int, difficulty: DifficultyLevel | None = None) -> lis
     """Generate a batch of questions with random topics."""
     questions: list[GeneratedQuestion] = []
     topics: list[Topic] = ["add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"]
+    difficulties: list[DifficultyLevel] = ["basic", "intermediate", "advanced"]
 
-    for _ in range(count):
-        level: DifficultyLevel = difficulty or "basic"
+    attempts = 0
+    # 防止无限循环，设定一个较大的尝试上限
+    while len(questions) < count and attempts < count * 10:
+        attempts += 1
+        level: DifficultyLevel = difficulty or random.choice(difficulties)
         topic = random.choice(topics)
-        questions.append(generate_question(topic, level))
+        try:
+            questions.append(generate_question(topic, level))
+        except RuntimeError:
+            continue
+
+    if len(questions) < count:
+        raise RuntimeError(f"未能在合理次数内生成批量题目 ({len(questions)}/{count})")
 
     return questions

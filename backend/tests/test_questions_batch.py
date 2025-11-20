@@ -12,7 +12,7 @@ async def test_batch_generate_valid_count():
     assert len(data["questions"]) == 5
     for q in data["questions"]:
         assert "solutionExpression" in q
-        assert q["difficultyLevel"] == "basic"
+        assert q["difficultyLevel"] in ["basic", "intermediate", "advanced"]
 
 @pytest.mark.asyncio
 async def test_batch_generate_invalid_count_low():
