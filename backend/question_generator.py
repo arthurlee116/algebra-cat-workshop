@@ -811,3 +811,16 @@ def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> Genera
                 difficulty_score=difficulty_score,
             )
     raise RuntimeError("未能在合理次数内生成满足难度的题目")
+
+
+def generate_batch(count: int, difficulty: DifficultyLevel | None = None) -> list[GeneratedQuestion]:
+    """Generate a batch of questions with random topics."""
+    questions: list[GeneratedQuestion] = []
+    topics: list[Topic] = ["add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"]
+
+    for _ in range(count):
+        level: DifficultyLevel = difficulty or "basic"
+        topic = random.choice(topics)
+        questions.append(generate_question(topic, level))
+
+    return questions

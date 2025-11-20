@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -87,3 +88,22 @@ class UserSummaryResponse(BaseModel):
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
+
+
+class QuestionItem(BaseModel):
+    question_id: str = Field(alias="questionId")
+    topic: str
+    difficulty_level: str = Field(alias="difficultyLevel")
+    expression_text: str = Field(alias="expressionText")
+    expression_latex: str = Field(alias="expressionLatex")
+    difficulty_score: int = Field(alias="difficultyScore")
+    solution_expression: str = Field(alias="solutionExpression")
+
+
+class BatchGenerateRequest(BaseModel):
+    count: int = Field(..., ge=1, le=20)
+    difficulty: Literal["basic", "intermediate", "advanced"] | None = None
+
+
+class BatchGenerateResponse(BaseModel):
+    questions: list[QuestionItem]

@@ -6,6 +6,7 @@ frontend/out/
 # Python virtual environments
 backend/.venv/
 backend/__pycache__/
+backend/tests/__pycache__/
 backend/data.db
 
 # macOS

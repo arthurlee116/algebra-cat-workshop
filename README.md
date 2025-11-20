@@ -44,6 +44,9 @@ public/images/   Ark 生成的猫咪与食品静态图
 - `POST /api/buy_food`
 - `GET /api/foods`
 - `GET /api/users/{userId}/summary`
+- `POST /api/questions/batch` (批量生成题目，无需登录)
+  - **Request**: `{ "count": 5, "difficulty": "basic" }` (count 1-20, difficulty 可选)
+  - **Response**: 返回 `{ "questions": [ ... ] }`，每题包含 `expressionText` (题面) 与 `solutionExpression` (答案)。
 
 题目逻辑、难度评估与计分规则的核心代码分别位于：
 - `backend/question_generator.py`
@@ -69,6 +72,12 @@ public/images/   Ark 生成的猫咪与食品静态图
 ## 图片生成说明
 - `public/images/cat-stage-*.png` 与 `public/images/food-*.png` 均使用 `doubao-seedream-4-0-250828` 模型生成，生成命令通过终端 `curl` + `ARK_API_KEY` 调用，不在源码中出现。
 - 后端提供的 `generate_image` 函数（见 `backend/ark_client.py`）实现了带重试的 Ark API 封装，方便后续需要时复用；函数通过环境变量读取 key，避免硬编码。
+
+## 测试
+- 后端测试：确保已安装依赖 (`pip install -r backend/requirements.txt` 和 `pytest`, `httpx`)。
+  ```bash
+  pytest backend/tests -q
+  ```
 
 ## 其他说明
 - 评分规则：低/中/高难度分别为 +1/+3/+5，错误均为 −1；`services.SCORE_RULES` 中集中管理并添加注释。

@@ -21,9 +21,12 @@ from .question_generator import (
     DifficultyLevel,
     Topic,
     VARIABLE_SYMBOLS,
+    generate_batch,
     generate_question,
 )
 from .schemas import (
+    BatchGenerateRequest,
+    BatchGenerateResponse,
     BuyFoodRequest,
     BuyFoodResponse,
     CheckAnswerRequest,
@@ -34,6 +37,7 @@ from .schemas import (
     GenerateQuestionResponse,
     LoginRequest,
     LoginResponse,
+    QuestionItem,
     UserSummaryResponse,
 )
 from .services import get_cat_stage, get_score_change, next_stage_threshold
@@ -140,6 +144,29 @@ def create_question(payload: GenerateQuestionRequest, db: Session = Depends(get_
         expressionText=db_question.expression_text,
         expressionLatex=question.expression_latex,
         difficultyScore=db_question.difficulty_score,
+    )
+
+
+@app.post("/api/questions/batch", response_model=BatchGenerateResponse)
+def batch_generate_questions(payload: BatchGenerateRequest):
+    try:
+        questions = generate_batch(payload.count, payload.difficulty)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return BatchGenerateResponse(
+        questions=[
+            QuestionItem(
+                questionId=q.question_id,
+                topic=q.topic,
+                difficultyLevel=q.difficulty_level,
+                expressionText=q.expression_text,
+                expressionLatex=q.expression_latex,
+                difficultyScore=q.difficulty_score,
+                solutionExpression=q.solution_expression,
+            )
+            for q in questions
+        ]
     )
 
 
