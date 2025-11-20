@@ -37,9 +37,10 @@ from .schemas import (
     GenerateQuestionResponse,
     LoginRequest,
     LoginResponse,
+    RecentQuestionsResponse,
     UserSummaryResponse,
 )
-from .services import generate_batch_questions, get_cat_stage, get_score_change, next_stage_threshold
+from .services import generate_batch_questions, get_cat_stage, get_score_change, get_recent_questions, next_stage_threshold
 
 # Ensure tables exist before the first request
 Base.metadata.create_all(bind=engine)
@@ -292,3 +293,13 @@ def summary(user_id: int, db: Session = Depends(get_db)):
         nextStageScore=next_stage_threshold(cat_score),
         updated_at=datetime.utcnow(),
     )
+
+
+@app.get("/api/users/{user_id}/recent_questions", response_model=RecentQuestionsResponse)
+def recent_questions(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该学生")
+
+    questions = get_recent_questions(db, user_id)
+    return RecentQuestionsResponse(questions=questions)

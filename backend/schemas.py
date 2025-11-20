@@ -1,33 +1,36 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class LoginRequest(BaseModel):
+class APIModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class LoginRequest(APIModel):
     chinese_name: str
     english_name: str
     class_name: str
 
 
-class LoginResponse(BaseModel):
+class LoginResponse(APIModel):
     user_id: int = Field(alias="userId")
     chinese_name: str
     english_name: str
     class_name: str
     total_score: int
 
-    class Config:
-        populate_by_name = True
 
-
-class GenerateQuestionRequest(BaseModel):
+class GenerateQuestionRequest(APIModel):
     user_id: int = Field(alias="userId")
     topic: str
     difficulty_level: str = Field(alias="difficultyLevel")
 
 
-class GenerateQuestionResponse(BaseModel):
+class GenerateQuestionResponse(APIModel):
     question_id: str = Field(alias="questionId")
     topic: str
     difficulty_level: str = Field(alias="difficultyLevel")
@@ -36,7 +39,7 @@ class GenerateQuestionResponse(BaseModel):
     difficulty_score: int = Field(alias="difficultyScore")
 
 
-class CheckAnswerRequest(BaseModel):
+class CheckAnswerRequest(APIModel):
     user_id: int = Field(alias="userId")
     question_id: str = Field(alias="questionId")
     expression_text: str = Field(alias="expressionText")
@@ -45,7 +48,7 @@ class CheckAnswerRequest(BaseModel):
     user_answer: str = Field(alias="userAnswer")
 
 
-class CheckAnswerResponse(BaseModel):
+class CheckAnswerResponse(APIModel):
     is_correct: bool = Field(alias="isCorrect")
     difficulty_score: int = Field(alias="difficultyScore")
     score_change: int = Field(alias="scoreChange")
@@ -54,18 +57,18 @@ class CheckAnswerResponse(BaseModel):
     solution_expression: str | None = Field(default=None, alias="solutionExpression")
 
 
-class BuyFoodRequest(BaseModel):
+class BuyFoodRequest(APIModel):
     user_id: int = Field(alias="userId")
     food_id: str = Field(alias="foodId")
 
 
-class BuyFoodResponse(BaseModel):
+class BuyFoodResponse(APIModel):
     success: bool
     new_total_score: int = Field(alias="newTotalScore")
     current_cat_stage: int = Field(alias="currentCatStage")
 
 
-class FoodItem(BaseModel):
+class FoodItem(APIModel):
     food_id: str = Field(alias="foodId")
     name: str
     description: str
@@ -73,11 +76,11 @@ class FoodItem(BaseModel):
     image: str
 
 
-class FoodListResponse(BaseModel):
+class FoodListResponse(APIModel):
     foods: list[FoodItem]
 
 
-class UserSummaryResponse(BaseModel):
+class UserSummaryResponse(APIModel):
     user_id: int = Field(alias="userId")
     total_score: int = Field(alias="totalScore")
     cat_score: int = Field(alias="catScore")
@@ -85,19 +88,18 @@ class UserSummaryResponse(BaseModel):
     next_stage_score: int = Field(alias="nextStageScore")
     updated_at: datetime
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={datetime: lambda v: v.isoformat()},
+    )
 
 
-from typing import Literal, Optional
-
-
-class BatchGenerateRequest(BaseModel):
+class BatchGenerateRequest(APIModel):
     count: int = Field(..., gt=0, le=20)
     difficulty: Optional[Literal["basic", "intermediate", "advanced"]] = None
 
 
-class BatchQuestion(BaseModel):
+class BatchQuestion(APIModel):
     question_id: str = Field(..., alias="questionId")
     topic: Literal["add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"]
     difficulty_level: Literal["basic", "intermediate", "advanced"] = Field(..., alias="difficultyLevel")
@@ -107,5 +109,15 @@ class BatchQuestion(BaseModel):
     solution_expression: str = Field(..., alias="solutionExpression")
 
 
-class BatchGenerateResponse(BaseModel):
+class BatchGenerateResponse(APIModel):
     questions: list[BatchQuestion]
+
+
+class RecentQuestion(APIModel):
+    question_id: str = Field(..., alias="questionId")
+    expression_text: str = Field(..., alias="expressionText")
+    created_at: datetime = Field(..., alias="createdAt")
+
+
+class RecentQuestionsResponse(APIModel):
+    questions: list[RecentQuestion]

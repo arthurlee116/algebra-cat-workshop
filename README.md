@@ -4,7 +4,7 @@
 
 ## 快速预览
 - 登录凭证：中文名 + 英文名 + 班级。
-- 练习页：自选题型/难度，自动生成题目，3 次作答机会，实时积分变化。
+- 练习页：自选题型/难度，自动生成题目，3 次作答机会，实时积分变化，右侧展示最近 5 道题便于回顾。
 - 我的猫：根据积分展示四个阶段的猫咪，使用积分在商店购买 8 种食品并触发动画。
 - 静态资源：`frontend/public/images` 下的猫咪与食物图片均由 Ark 模型生成。
 
@@ -37,14 +37,18 @@ public/images/   Ark 生成的猫咪与食品静态图
    ```
    FastAPI 默认开放在 `http://127.0.0.1:8000`，可在 `http://127.0.0.1:8000/docs` 查看 API。
 
-5. 测试批量生成端点：
+5. 测试后端：
    ```bash
    pytest backend/tests -q
    ```
+   - `test_questions_batch.py`: 批量生成端点测试
+   - `test_recent_questions.py`: 最近题目端点测试 (empty history, 1 question, limit 5/6 ordered desc, invalid user 404)，测试自动切换到内存 SQLite，互不污染
+
 
 ### 主要接口
 - `POST /api/login`
 - `POST /api/generate_question`
+- `GET /api/users/{userId}/recent_questions`
 - `POST /api/check_answer`
 - `POST /api/buy_food`
 - `POST /api/questions/batch` (new): Generate 1-20 questions in batch. Request: `{ "count": int (1-20), "difficulty"?: "basic"|"intermediate"|"advanced" }`. Response: `{ "questions": [{ "questionId": str, "topic": str, "difficultyLevel": str, "expressionText": str, "expressionLatex": str, "difficultyScore": int, "solutionExpression": str }] }`. Reuses existing generator, no DB persistence/user required.
@@ -82,4 +86,5 @@ public/images/   Ark 生成的猫咪与食品静态图
 - 评分规则：低/中/高难度分别为 +1/+3/+5，错误均为 −1；`services.SCORE_RULES` 中集中管理并添加注释。
 - 难度区间：0–33、34–66、67–100，对应题目生成函数内部的 `DIFFICULTY_RANGES`，并在 `compute_difficulty` 中基于次数/项数/系数综合打分。
 - App Router 与 Tailwind CSS：前端在 `src/app` 下组织登录、练习、猫咪页面，并通过 `globals.css` 引入 Tailwind v4。
+- 最近题目展示：`frontend/src/hooks/useRecentQuestions.ts` 提供数据获取；`frontend/src/components/Questions/RecentQuestions.tsx` 在练习页右侧展示 5 条最近题，自动随最新出题刷新。
 - 持久化：SQLite 位于 `backend/data.db`，若需要重置可删除该文件后重新启动后端。

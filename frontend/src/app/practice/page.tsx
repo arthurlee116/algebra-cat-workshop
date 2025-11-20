@@ -6,6 +6,7 @@ import NavBar from "@/components/NavBar";
 import LatexExpression from "@/components/LatexExpression";
 import { useStoredUser } from "@/hooks/useStoredUser";
 import { apiPost } from "@/lib/api";
+import RecentQuestions from "@/components/Questions/RecentQuestions";
 
 const TOPICS = [
   { id: "add_sub", label: "整式加减", hint: "专注合并同类项，括号要展开再合并" },
@@ -58,6 +59,7 @@ export default function PracticePage() {
   const [previousScore, setPreviousScore] = useState<number | null>(null);
   const [solutionExpression, setSolutionExpression] = useState<string | null>(null);
   const [inputError, setInputError] = useState(false);
+  const [recentRefreshKey, setRecentRefreshKey] = useState(0);
   const answerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,6 +113,7 @@ export default function PracticePage() {
         difficultyLevel: selectedDifficulty,
       });
       setQuestion(payload);
+      setRecentRefreshKey((prev) => prev + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取题目失败");
     } finally {
@@ -244,6 +247,9 @@ export default function PracticePage() {
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row">
         <aside className="hidden w-72 flex-shrink-0 rounded-2xl bg-white p-6 shadow-sm lg:block">
           {filterPanel}
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <RecentQuestions userId={user?.userId} refreshKey={recentRefreshKey} />
+          </div>
         </aside>
         <div className="lg:hidden">
           <button

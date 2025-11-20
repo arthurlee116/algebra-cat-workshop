@@ -5,6 +5,10 @@ from typing import Optional
 
 from .question_generator import DifficultyLevel, GeneratedQuestion, Topic, generate_question
 
+from sqlalchemy.orm import Session
+from .models import Question
+from .schemas import RecentQuestion
+
 # 计分规则：根据难度决定一次答对和答错的分差。
 SCORE_RULES: dict[DifficultyLevel, tuple[int, int]] = {
     "basic": (1, -1),
@@ -49,3 +53,21 @@ def generate_batch_questions(count: int, difficulty: Optional[DifficultyLevel] =
         q = generate_question(topic, diff_level)
         questions.append(q)
     return questions
+
+
+def get_recent_questions(db: Session, user_id: int) -> list[RecentQuestion]:
+    questions = (
+        db.query(Question)
+        .filter(Question.user_id == user_id)
+        .order_by(Question.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    return [
+        RecentQuestion(
+            question_id=q.question_id,
+            expression_text=q.expression_text,
+            created_at=q.created_at,
+        )
+        for q in questions
+    ]
