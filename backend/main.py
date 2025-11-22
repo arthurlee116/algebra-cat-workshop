@@ -2,28 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import sympy as sp
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func
 from sqlalchemy.orm import Session
-from sympy.parsing.sympy_parser import (
-    implicit_multiplication_application,
-    parse_expr,
-    standard_transformations,
-)
 from typing import Optional
 
 from .config import get_settings
 from .database import Base, engine, get_db
 from .foods import FOOD_MAP, FOODS
-from .models import FoodPurchase, Question, QuestionAttempt, User
-from .question_generator import (
-    DifficultyLevel,
-    Topic,
-    VARIABLE_SYMBOLS,
-    generate_question,
-)
+from .models import FoodPurchase, Question, User
+from .question_generator import generate_question
 from .schemas import (
     BatchQuestion,
     BuyFoodRequest,
@@ -43,7 +31,17 @@ from .schemas import (
     HistoryCreate,
     HistoryResponse,
 )
-from .services import generate_batch_questions, get_cat_stage, get_score_change, get_recent_questions, next_stage_threshold, create_history_entry, get_history_entries
+from .services import (
+    AnswerResult,
+    create_history_entry,
+    generate_batch_questions,
+    get_cat_score,
+    get_cat_stage,
+    get_history_entries,
+    get_recent_questions,
+    next_stage_threshold,
+    process_answer,
+)
 
 # Ensure tables exist before the first request
 Base.metadata.create_all(bind=engine)
@@ -59,30 +57,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_SYMBOLS = VARIABLE_SYMBOLS
-_TRANSFORMATIONS = standard_transformations + (implicit_multiplication_application,)
 
-
-def _normalize_expr(text: str) -> sp.Expr:
-    sanitized = text.replace("^", "**")
-    try:
-        expr = parse_expr(sanitized, local_dict=_SYMBOLS, transformations=_TRANSFORMATIONS, evaluate=True)
-        return sp.simplify(expr)
-    except Exception as exc:  # pragma: no cover - sympy errors are contextual
-        raise HTTPException(status_code=400, detail=f"无法解析表达式: {exc}") from exc
-
-
-def _clamp_score(value: int) -> int:
-    return value if value > 0 else 0
-
-
-def _get_cat_score(db: Session, user_id: int) -> int:
-    total = (
-        db.query(func.coalesce(func.sum(FoodPurchase.cost), 0))
-        .filter(FoodPurchase.user_id == user_id)
-        .scalar()
-    )
-    return int(total or 0)
+def _get_user_or_404(db: Session, user_id: int) -> User:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该学生")
+    return user
 
 
 @app.post("/api/login", response_model=LoginResponse)
@@ -163,9 +143,7 @@ def batch_generate_questions(payload: BatchGenerateRequest):
 
 @app.post("/api/check_answer", response_model=CheckAnswerResponse)
 def check_answer(payload: CheckAnswerRequest, db: Session = Depends(get_db)):
-    user = db.get(User, payload.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="未找到该学生")
+    user = _get_user_or_404(db, payload.user_id)
 
     question = db.query(Question).filter(
         Question.question_id == payload.question_id,
@@ -174,60 +152,18 @@ def check_answer(payload: CheckAnswerRequest, db: Session = Depends(get_db)):
     if not question:
         raise HTTPException(status_code=404, detail="题目不存在或已过期")
 
-    if question.is_solved:
-        raise HTTPException(status_code=400, detail="该题已答对，请获取下一题")
-
-    if question.attempts_used >= 3:
-        raise HTTPException(status_code=400, detail="该题已达到三次机会，请获取下一题")
-
-    correct_expr = _normalize_expr(question.solution_expression)
-    user_expr = _normalize_expr(payload.user_answer)
-    is_correct = sp.simplify(correct_expr - user_expr) == 0
-
-    question.attempts_used += 1
-    if is_correct:
-        question.is_solved = True
-
-    # 只有答对或者三次机会全部用尽仍然错误时才变动积分
-    if is_correct:
-        score_change = get_score_change(question.difficulty_level, True)
-    elif question.attempts_used >= 3:
-        score_change = get_score_change(question.difficulty_level, False)
-    else:
-        score_change = 0
-
-    if score_change:
-        user.total_score = _clamp_score(user.total_score + score_change)
-
-    db_attempt = QuestionAttempt(
-        question_id=question.question_id,
-        user_id=user.id,
-        expression_text=question.expression_text,
-        topic=question.topic,
-        difficulty_level=question.difficulty_level,
-        difficulty_score=question.difficulty_score,
-        user_answer=payload.user_answer,
-        is_correct=is_correct,
-        score_change=score_change,
-        attempt_index=question.attempts_used,
-    )
-    db.add(db_attempt)
-    db.commit()
-    db.refresh(user)
-    db.refresh(question)
-
-    # 如果机会用尽，返回标准答案
-    solution = None
-    if question.attempts_used >= 3:
-        solution = question.solution_expression
+    try:
+        result: AnswerResult = process_answer(db, question, user, payload.user_answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return CheckAnswerResponse(
-        isCorrect=is_correct,
-        difficultyScore=question.difficulty_score,
-        scoreChange=score_change,
-        newTotalScore=user.total_score,
-        attemptCount=question.attempts_used,
-        solutionExpression=solution,
+        isCorrect=result.is_correct,
+        difficultyScore=result.difficulty_score,
+        scoreChange=result.score_change,
+        newTotalScore=result.new_total_score,
+        attemptCount=result.attempt_count,
+        solutionExpression=result.solution_expression,
     )
 
 
@@ -255,7 +191,7 @@ def buy_food(payload: BuyFoodRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    cat_score = _get_cat_score(db, user.id)
+    cat_score = get_cat_score(db, user.id)
 
     return BuyFoodResponse(
         success=True,
@@ -282,11 +218,9 @@ def list_foods():
 
 @app.get("/api/users/{user_id}/summary", response_model=UserSummaryResponse)
 def summary(user_id: int, db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="未找到该学生")
+    user = _get_user_or_404(db, user_id)
 
-    cat_score = _get_cat_score(db, user.id)
+    cat_score = get_cat_score(db, user.id)
 
     return UserSummaryResponse(
         userId=user.id,
@@ -300,9 +234,7 @@ def summary(user_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/users/{user_id}/recent_questions", response_model=RecentQuestionsResponse)
 def recent_questions(user_id: int, db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="未找到该学生")
+    _get_user_or_404(db, user_id)
 
     questions = get_recent_questions(db, user_id)
     return RecentQuestionsResponse(questions=questions)
@@ -310,9 +242,7 @@ def recent_questions(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/history", response_model=HistoryResponse)
 def post_history(payload: HistoryCreate, db: Session = Depends(get_db)):
-    user = db.get(User, payload.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="未找到该学生")
+    _get_user_or_404(db, payload.user_id)
     return create_history_entry(db, payload)
 
 
@@ -326,9 +256,7 @@ def get_history(
     date_to: Optional[datetime] = None,
     db: Session = Depends(get_db),
 ):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="未找到该学生")
+    _get_user_or_404(db, user_id)
     return get_history_entries(
         db, user_id, limit, offset, min_score, date_from, date_to
     )

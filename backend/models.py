@@ -83,4 +83,4 @@ class HistoryEntry(Base):
     user_answer = Column(String, nullable=False)
     score = Column(Integer, nullable=False)
     correct_answer = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

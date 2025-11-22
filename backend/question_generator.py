@@ -26,6 +26,12 @@ DIFFICULTY_RANGES: dict[DifficultyLevel, tuple[int, int]] = {
     "advanced": (67, 100),
 }
 
+MAX_POLYNOMIAL_ATTEMPTS = 20
+ADD_SUB_MAX_ATTEMPTS = 160
+ADD_SUB_RELAX_POINTS = (80, 120)
+ADD_SUB_RELAX_POINT_SET = set(ADD_SUB_RELAX_POINTS)
+MAX_GENERATION_ATTEMPTS = 1000
+
 
 @dataclass
 class GeneratedQuestion:
@@ -112,7 +118,7 @@ def random_polynomial(
     if not var_list:
         var_list = [x]
 
-    for _ in range(20):
+    for _ in range(MAX_POLYNOMIAL_ATTEMPTS):
         term_count = random.randint(max(2, min_terms), max(4, min_terms))
         expr = sp.Integer(0)
         for _ in range(term_count):
@@ -187,10 +193,10 @@ def build_add_sub_expression(
     min_result_terms = config["min_result_terms"]
     min_degree = config["min_degree"]
     attempt = 0
-    max_attempts = 160
+    max_attempts = ADD_SUB_MAX_ATTEMPTS
     while attempt < max_attempts:
         attempt += 1
-        if attempt in {80, 120}:
+        if attempt in ADD_SUB_RELAX_POINT_SET:
             min_merge_targets = max(1, min_merge_targets - 1)
             min_result_terms = max(2, min_result_terms - 1)
             if difficulty_level == "basic":
@@ -653,6 +659,28 @@ def build_poly_ops_expression(
     return display_expression, latex_expression, sp.simplify(expr)
 
 
+def _select_symbols(difficulty_level: DifficultyLevel) -> Sequence[sp.Symbol]:
+    if difficulty_level == "basic":
+        return (VARIABLE_SYMBOLS["x"],)
+    count = random.randint(2, min(3, len(VARIABLE_NAMES)))
+    names = random.sample(VARIABLE_NAMES, k=count)
+    return tuple(VARIABLE_SYMBOLS[name] for name in sorted(names))
+
+
+def _target_range_for(topic: Topic, difficulty_level: DifficultyLevel) -> tuple[int, int]:
+    target_range = DIFFICULTY_RANGES[difficulty_level]
+    if topic == "factorization" and difficulty_level == "basic":
+        return (0, 70)
+    if topic in ("poly_ops", "mixed_ops"):
+        poly_ranges: dict[DifficultyLevel, tuple[int, int]] = {
+            "basic": (15, 55),
+            "intermediate": (40, 75),
+            "advanced": (60, 100),
+        }
+        return poly_ranges[difficulty_level]
+    return target_range
+
+
 def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
     """Rough difficulty estimation between 0 and 100."""
 
@@ -759,30 +787,10 @@ def compute_difficulty(expr: sp.Expr, topic: Topic) -> int:
 def generate_question(topic: Topic, difficulty_level: DifficultyLevel) -> GeneratedQuestion:
     if topic not in {"add_sub", "mul_div", "poly_ops", "factorization", "mixed_ops"}:
         raise ValueError("未知题型")
+    target_range = _target_range_for(topic, difficulty_level)
+    symbols: Sequence[sp.Symbol] = _select_symbols(difficulty_level)
 
-    target_range = DIFFICULTY_RANGES[difficulty_level]
-    # 因式分解整体偏难一些，基础题也可能落在 60 分左右，这里单独放宽 basic 的区间。
-    if topic == "factorization" and difficulty_level == "basic":
-        target_range = (0, 70)
-    if topic == "poly_ops":
-        poly_ranges: dict[DifficultyLevel, tuple[int, int]] = {
-            "basic": (15, 55),
-            "intermediate": (40, 75),
-            "advanced": (60, 100),
-        }
-        target_range = poly_ranges[difficulty_level]
-
-    # 根据难度选取题目使用的未知数：
-    # - basic：固定只使用 x
-    # - intermediate / advanced：在 x, y, z 中随机选择 2~3 个
-    if difficulty_level == "basic":
-        symbols: Sequence[sp.Symbol] = (VARIABLE_SYMBOLS["x"],)
-    else:
-        count = random.randint(2, min(3, len(VARIABLE_NAMES)))
-        names = random.sample(VARIABLE_NAMES, k=count)
-        symbols = tuple(VARIABLE_SYMBOLS[name] for name in sorted(names))
-
-    for _ in range(200):
+    for _ in range(MAX_GENERATION_ATTEMPTS):
         if topic == "add_sub":
             expression_text, expression_latex, expr = build_add_sub_expression(symbols, difficulty_level)
             solution = sp.simplify(expr)

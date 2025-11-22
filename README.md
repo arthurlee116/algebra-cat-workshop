@@ -43,6 +43,7 @@ public/images/   Ark 生成的猫咪与食品静态图
    ```
    - `test_questions_batch.py`: 批量生成端点测试
    - `test_recent_questions.py`: 最近题目端点测试 (empty history, 1 question, limit 5/6 ordered desc, invalid user 404)，测试自动切换到内存 SQLite，互不污染
+   - `test_check_answer.py`: 判题流程测试（答对计分、三次机会封顶、异常输入拦截）
 
 
 ### 主要接口

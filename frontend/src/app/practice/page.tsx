@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import LatexExpression from "@/components/LatexExpression";
-import { useStoredUser } from "@/hooks/useStoredUser";
-import { apiPost } from "@/lib/api";
 import RecentQuestions from "@/components/Questions/RecentQuestions";
+import usePracticeSession from "@/hooks/usePracticeSession";
+import { useStoredUser } from "@/hooks/useStoredUser";
 
 const TOPICS = [
   { id: "add_sub", label: "整式加减", hint: "专注合并同类项，括号要展开再合并" },
@@ -22,46 +22,38 @@ const DIFFICULTIES = [
   { id: "advanced", label: "高级", desc: "67-100 分：复杂系数或嵌套" },
 ] as const;
 
-type QuestionResponse = {
-  questionId: string;
-  topic: string;
-  difficultyLevel: string;
-  expressionText: string;
-  expressionLatex: string;
-  difficultyScore: number;
-};
-
-type CheckAnswerResponse = {
-  isCorrect: boolean;
-  difficultyScore: number;
-  scoreChange: number;
-  newTotalScore: number;
-  attemptCount: number;
-  solutionExpression?: string;
-};
-
 export default function PracticePage() {
   const router = useRouter();
   const { user, writeUser, updateUserScore } = useStoredUser();
   const userId = user?.userId;
   const [selectedTopic, setSelectedTopic] = useState<(typeof TOPICS)[number]["id"]>("add_sub");
   const [selectedDifficulty, setSelectedDifficulty] = useState<(typeof DIFFICULTIES)[number]["id"]>("basic");
-  const [question, setQuestion] = useState<QuestionResponse | null>(null);
-  const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [answer, setAnswer] = useState("");
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [attemptCount, setAttemptCount] = useState(0);
-  const [status, setStatus] = useState<"idle" | "correct" | "exhausted">("idle");
-  const [submitting, setSubmitting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [scoreChange, setScoreChange] = useState<number | null>(null);
-  const [previousScore, setPreviousScore] = useState<number | null>(null);
-  const [solutionExpression, setSolutionExpression] = useState<string | null>(null);
   const [inputError, setInputError] = useState(false);
-  const [recentRefreshKey, setRecentRefreshKey] = useState(0);
   const answerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const {
+    question,
+    loadingQuestion,
+    feedback,
+    error,
+    attemptCount,
+    status,
+    submitting,
+    scoreChange,
+    previousScore,
+    solutionExpression,
+    recentRefreshKey,
+    fetchQuestion,
+    submitAnswer,
+  } = usePracticeSession({
+    user,
+    topic: selectedTopic,
+    difficulty: selectedDifficulty,
+    onScoreUpdate: updateUserScore,
+  });
 
   const triggerInputError = useCallback(() => {
     if (shakeTimeoutRef.current) {
@@ -94,101 +86,30 @@ export default function PracticePage() {
     }
   }, [user, router]);
 
-  const fetchQuestion = useCallback(async () => {
-    if (!userId) return;
-    setLoadingQuestion(true);
-    setError(null);
-    setFeedback(null);
-    setAttemptCount(0);
-    setStatus("idle");
+  const handleFetchQuestion = useCallback(async () => {
     setAnswer("");
-    // 清除之前的反馈状态
-    setScoreChange(null);
-    setPreviousScore(null);
-    setSolutionExpression(null);
-    try {
-      const payload = await apiPost<QuestionResponse>("/api/generate_question", {
-        userId,
-        topic: selectedTopic,
-        difficultyLevel: selectedDifficulty,
-      });
-      setQuestion(payload);
-      setRecentRefreshKey((prev) => prev + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "获取题目失败");
-    } finally {
-      setLoadingQuestion(false);
-    }
-  }, [selectedDifficulty, selectedTopic, userId]);
+    await fetchQuestion();
+  }, [fetchQuestion]);
 
   useEffect(() => {
     if (userId) {
-      fetchQuestion();
+      handleFetchQuestion();
     }
-  }, [userId, fetchQuestion]);
+  }, [handleFetchQuestion, userId]);
 
-  const handleSubmit = async () => {
-    if (!user || !question || !answer.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    setPreviousScore(user.total_score);
-    try {
-      const result = await apiPost<CheckAnswerResponse>("/api/check_answer", {
-        userId: user.userId,
-        questionId: question.questionId,
-        expressionText: question.expressionText,
-        topic: question.topic,
-        difficultyLevel: question.difficultyLevel,
-        userAnswer: answer,
-      });
-      const remaining = Math.max(0, 3 - result.attemptCount);
-
-      // 设置积分变化信息
-      setScoreChange(result.scoreChange);
-
-      // 如果有标准答案，保存它
-      if (result.solutionExpression) {
-        setSolutionExpression(result.solutionExpression);
-      }
-
-      // 构建详细的反馈信息
-      let feedbackMessage = "";
-      if (result.isCorrect) {
-        feedbackMessage = `🎉 答对了！获得 ${result.scoreChange > 0 ? `+${result.scoreChange}` : result.scoreChange} 分`;
-      } else {
-        const impact = result.scoreChange < 0 ? `扣除 ${Math.abs(result.scoreChange)} 分` : "不扣分";
-        feedbackMessage = `❌ 答案错误，${impact}。还剩 ${remaining} 次机会`;
-      }
-
-      setFeedback(feedbackMessage);
-      setAttemptCount(result.attemptCount);
-      if (result.isCorrect) {
-        setStatus("correct");
-      } else if (result.attemptCount >= 3) {
-        setStatus("exhausted");
-      } else {
+  const handleSubmit = useCallback(async () => {
+    if (!user || !question || !answer.trim()) {
+      if (!answer.trim()) {
         triggerInputError();
       }
-      updateUserScore(result.newTotalScore);
-
-      // Save to history
-      try {
-        await apiPost("/api/history", {
-          user_id: user.userId,
-          question_text: question.expressionText,
-          user_answer: answer,
-          score: result.scoreChange,
-          correct_answer: result.solutionExpression || null,
-        });
-      } catch (historyErr) {
-        console.error("Failed to save history", historyErr);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "提交失败，请稍后再试");
-    } finally {
-      setSubmitting(false);
+      return;
     }
-  };
+
+    const result = await submitAnswer(answer);
+    if (result && !result.isCorrect && result.attemptCount < 3) {
+      triggerInputError();
+    }
+  }, [answer, question, submitAnswer, triggerInputError, user]);
 
   const canSubmit = !!question && status !== "correct" && !submitting && !!answer.trim();
   const canGoNext = status === "correct" || attemptCount >= 3;
@@ -368,7 +289,7 @@ export default function PracticePage() {
               {submitting ? "判分中..." : "提交答案"}
             </button>
             <button
-              onClick={fetchQuestion}
+              onClick={handleFetchQuestion}
               disabled={!canGoNext}
               className="rounded-2xl border border-gray-200 px-8 py-3 text-gray-700 transition hover:border-purple-200 disabled:cursor-not-allowed disabled:opacity-60"
             >

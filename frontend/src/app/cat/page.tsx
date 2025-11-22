@@ -4,47 +4,21 @@ import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { apiGet, apiPost } from "@/lib/api";
 import { getCatImage, nextStageDiff, stageLabel } from "@/lib/cat";
+import useCatData from "@/hooks/useCatData";
 import { useStoredUser } from "@/hooks/useStoredUser";
 
 const NavBar = dynamic(() => import("@/components/NavBar"), { ssr: false });
 
-type FoodItem = {
-  foodId: string;
-  name: string;
-  description: string;
-  price: number;
-  image: string;
-};
-
-type FoodListResponse = {
-  foods: FoodItem[];
-};
-
-type UserSummary = {
-  userId: number;
-  totalScore: number;
-  catScore: number;
-  currentCatStage: number;
-  nextStageScore: number;
-};
-
-type BuyResponse = {
-  success: boolean;
-  newTotalScore: number;
-  currentCatStage: number;
-};
-
 export default function CatPage() {
   const router = useRouter();
   const { user, writeUser, updateUserScore } = useStoredUser();
-  const [foods, setFoods] = useState<FoodItem[]>([]);
-  const [summary, setSummary] = useState<UserSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [buyingId, setBuyingId] = useState<string | null>(null);
   const [celebrating, setCelebrating] = useState(false);
   const [highlightFood, setHighlightFood] = useState<string | null>(null);
+  const { foods, summary, error, loading, buyingId, buyFood } = useCatData({
+    user,
+    onScoreUpdate: updateUserScore,
+  });
 
   const logout = useCallback(() => {
     writeUser(null);
@@ -57,58 +31,19 @@ export default function CatPage() {
     }
   }, [user, router]);
 
-  const loadFoods = useCallback(async () => {
-    try {
-      const data = await apiGet<FoodListResponse>("/api/foods");
-      setFoods(data.foods);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载食物失败");
-    }
-  }, []);
-
-  const refreshSummary = useCallback(async () => {
-    if (!user) return;
-    try {
-      const data = await apiGet<UserSummary>(`/api/users/${user.userId}/summary`);
-      setSummary(data);
-      updateUserScore(data.totalScore);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载积分失败");
-    }
-  }, [updateUserScore, user]);
-
-  useEffect(() => {
-    if (user) {
-      loadFoods();
-      refreshSummary();
-    }
-  }, [user, loadFoods, refreshSummary]);
-
   const handleBuy = async (foodId: string) => {
     if (!user) return;
-    setBuyingId(foodId);
-    setError(null);
-    try {
-      const payload = await apiPost<BuyResponse>("/api/buy_food", {
-        userId: user.userId,
-        foodId,
-      });
-      await refreshSummary();
-      setCelebrating(true);
-      setHighlightFood(foodId);
-      setTimeout(() => {
-        setCelebrating(false);
-        setHighlightFood(null);
-      }, 1200);
-      updateUserScore(payload.newTotalScore);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "购买失败，稍后重试");
-    } finally {
-      setBuyingId(null);
-    }
+    const success = await buyFood(foodId);
+    if (!success) return;
+    setCelebrating(true);
+    setHighlightFood(foodId);
+    setTimeout(() => {
+      setCelebrating(false);
+      setHighlightFood(null);
+    }, 1200);
   };
 
-  if (!user || !summary) {
+  if (!user || loading || !summary) {
     return (
       <div className="min-h-screen bg-slate-50">
         <NavBar user={user ?? null} onLogout={logout} />

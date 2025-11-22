@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { StoredUser } from "@/lib/userStorage";
+import { useScoreAnimation } from "@/hooks/useScoreAnimation";
 
 const LINKS = [
   { href: "/practice", label: "做题" },
@@ -20,39 +21,12 @@ export default function NavBar({ user, onLogout }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scoreAnimation, setScoreAnimation] = useState<'up' | 'down' | null>(null);
-  const prevScoreRef = useRef<number | null>(null);
+  const scoreAnimation = useScoreAnimation(user);
 
   const handleNavigate = (href: string) => {
     setMobileOpen(false);
     router.push(href);
   };
-
-  // 监听积分变化
-  useEffect(() => {
-    if (!user) {
-      prevScoreRef.current = null;
-      setScoreAnimation(null);
-      return;
-    }
-
-    const currentScore = user.total_score;
-    const previousScore = prevScoreRef.current;
-    prevScoreRef.current = currentScore;
-
-    if (previousScore === null || currentScore === previousScore) {
-      return;
-    }
-
-    const change = currentScore - previousScore;
-    setScoreAnimation(change > 0 ? "up" : "down");
-
-    const timer = setTimeout(() => {
-      setScoreAnimation(null);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [user]);
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-30">
