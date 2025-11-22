@@ -121,3 +121,27 @@ class RecentQuestion(APIModel):
 
 class RecentQuestionsResponse(APIModel):
     questions: list[RecentQuestion]
+
+
+class HistoryCreate(APIModel):
+    user_id: int
+    question_text: str
+    user_answer: str
+    score: int
+    correct_answer: Optional[str] = None
+
+
+class HistoryResponse(APIModel):
+    id: int
+    user_id: int
+    question_text: str
+    user_answer: str
+    score: int
+    correct_answer: Optional[str] | None
+    created_at: datetime
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_encoders={datetime: lambda v: v.isoformat()},
+    )

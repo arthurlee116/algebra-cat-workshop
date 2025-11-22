@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import sympy as sp
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ from sympy.parsing.sympy_parser import (
     parse_expr,
     standard_transformations,
 )
+from typing import Optional
 
 from .config import get_settings
 from .database import Base, engine, get_db
@@ -39,8 +40,10 @@ from .schemas import (
     LoginResponse,
     RecentQuestionsResponse,
     UserSummaryResponse,
+    HistoryCreate,
+    HistoryResponse,
 )
-from .services import generate_batch_questions, get_cat_stage, get_score_change, get_recent_questions, next_stage_threshold
+from .services import generate_batch_questions, get_cat_stage, get_score_change, get_recent_questions, next_stage_threshold, create_history_entry, get_history_entries
 
 # Ensure tables exist before the first request
 Base.metadata.create_all(bind=engine)
@@ -303,3 +306,29 @@ def recent_questions(user_id: int, db: Session = Depends(get_db)):
 
     questions = get_recent_questions(db, user_id)
     return RecentQuestionsResponse(questions=questions)
+
+
+@app.post("/api/history", response_model=HistoryResponse)
+def post_history(payload: HistoryCreate, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该学生")
+    return create_history_entry(db, payload)
+
+
+@app.get("/api/history", response_model=list[HistoryResponse])
+def get_history(
+    user_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = 0,
+    min_score: Optional[int] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该学生")
+    return get_history_entries(
+        db, user_id, limit, offset, min_score, date_from, date_to
+    )

@@ -72,3 +72,15 @@ class FoodPurchase(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="purchases")
+
+
+class HistoryEntry(Base):
+    __tablename__ = "history_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    question_text = Column(String, nullable=False)
+    user_answer = Column(String, nullable=False)
+    score = Column(Integer, nullable=False)
+    correct_answer = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import random
 from typing import Optional
+from datetime import datetime, timedelta
 
 from .question_generator import DifficultyLevel, GeneratedQuestion, Topic, generate_question
 
 from sqlalchemy.orm import Session
-from .models import Question
-from .schemas import RecentQuestion
+from .models import Question, HistoryEntry
+from .schemas import RecentQuestion, HistoryCreate, HistoryResponse
 
 # 计分规则：根据难度决定一次答对和答错的分差。
 SCORE_RULES: dict[DifficultyLevel, tuple[int, int]] = {
@@ -71,3 +72,36 @@ def get_recent_questions(db: Session, user_id: int) -> list[RecentQuestion]:
         )
         for q in questions
     ]
+
+
+def create_history_entry(db: Session, history: HistoryCreate) -> HistoryResponse:
+    db_history = HistoryEntry(**history.model_dump())
+    db.add(db_history)
+    db.commit()
+    db.refresh(db_history)
+    return HistoryResponse.model_validate(db_history, from_attributes=True)
+
+
+def get_history_entries(
+    db: Session,
+    user_id: int,
+    limit: int = 20,
+    offset: int = 0,
+    min_score: Optional[int] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+) -> list[HistoryResponse]:
+    query = db.query(HistoryEntry).filter(HistoryEntry.user_id == user_id).order_by(HistoryEntry.created_at.desc())
+    if min_score is not None:
+        query = query.filter(HistoryEntry.score >= min_score)
+    if date_from:
+        query = query.filter(HistoryEntry.created_at >= date_from)
+    if date_to:
+        # If the client sends a date-only value (parsed as midnight), include the entire day by
+        # filtering up to but not including the next day.
+        if date_to.time() == datetime.min.time():
+            query = query.filter(HistoryEntry.created_at < date_to + timedelta(days=1))
+        else:
+            query = query.filter(HistoryEntry.created_at <= date_to)
+    histories = query.offset(offset).limit(limit).all()
+    return [HistoryResponse.model_validate(h, from_attributes=True) for h in histories]

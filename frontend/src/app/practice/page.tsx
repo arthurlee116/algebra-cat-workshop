@@ -170,6 +170,19 @@ export default function PracticePage() {
         triggerInputError();
       }
       updateUserScore(result.newTotalScore);
+
+      // Save to history
+      try {
+        await apiPost("/api/history", {
+          user_id: user.userId,
+          question_text: question.expressionText,
+          user_answer: answer,
+          score: result.scoreChange,
+          correct_answer: result.solutionExpression || null,
+        });
+      } catch (historyErr) {
+        console.error("Failed to save history", historyErr);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败，请稍后再试");
     } finally {

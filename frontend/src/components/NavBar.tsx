@@ -7,6 +7,7 @@ import { StoredUser } from "@/lib/userStorage";
 
 const LINKS = [
   { href: "/practice", label: "做题" },
+  { href: "/history", label: "练习历史" },
   { href: "/cat", label: "我的猫" },
 ];
 

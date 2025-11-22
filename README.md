@@ -4,7 +4,7 @@
 
 ## 快速预览
 - 登录凭证：中文名 + 英文名 + 班级。
-- 练习页：自选题型/难度，自动生成题目，3 次作答机会，实时积分变化，右侧展示最近 5 道题便于回顾。
+- 练习页：自选题型/难度，自动
 - 我的猫：根据积分展示四个阶段的猫咪，使用积分在商店购买 8 种食品并触发动画。
 - 静态资源：`frontend/public/images` 下的猫咪与食物图片均由 Ark 模型生成。
 
@@ -54,6 +54,8 @@ public/images/   Ark 生成的猫咪与食品静态图
 - `POST /api/questions/batch` (new): Generate 1-20 questions in batch. Request: `{ "count": int (1-20), "difficulty"?: "basic"|"intermediate"|"advanced" }`. Response: `{ "questions": [{ "questionId": str, "topic": str, "difficultyLevel": str, "expressionText": str, "expressionLatex": str, "difficultyScore": int, "solutionExpression": str }] }`. Reuses existing generator, no DB persistence/user required.
 - `GET /api/foods`
 - `GET /api/users/{userId}/summary`
+- `POST /api/history`: 保存题目提交记录，返回记录ID。Request: `{ "user_id": int, "question_text": str, "user_answer": str, "score": int, "correct_answer"?: str }`.
+- `GET /api/history`: 查询用户历史记录，按 created_at DESC。Query: `user_id`(required), `limit=20`, `offset=0`, `min_score`?, `date_from`?, `date_to`?
 
 题目逻辑、难度评估与计分规则的核心代码分别位于：
 - `backend/question_generator.py` (批量生成复用 `generate_question`)
