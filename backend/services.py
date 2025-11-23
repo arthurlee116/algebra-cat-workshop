@@ -75,7 +75,7 @@ def get_cat_stage(total_score: int) -> int:
         return 1
     if total_score <= 150:
         return 2
-    if total_score <= 300:
+    if total_score <= 200:
         return 3
     return 4
 
@@ -87,7 +87,7 @@ def next_stage_threshold(total_score: int) -> int:
     if stage == 2:
         return 151
     if stage == 3:
-        return 301
+        return 201
     return total_score
 
 
