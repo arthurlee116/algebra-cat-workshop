@@ -1,0 +1,16 @@
+[Unit]
+Description=Math Frontend Service (Next.js)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/math/frontend
+Environment=NODE_ENV=production
+# 如果你在服务器上使用 NVM 管理 Node，这里的路径可能需要修改。
+# 可以通过在服务器运行 `which npm` 查看真实路径。
+ExecStart=/usr/bin/npm start -- -p 3000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
